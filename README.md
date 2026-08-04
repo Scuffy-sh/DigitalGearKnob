@@ -53,7 +53,7 @@ Two data paths meet on the board: the sensor quaternion flows in over I2C, is tu
 
 ### ESP32-S3 T-Display AMOLED
 
-![ESP32-S3 T-Display AMOLED](images/t-display-s3-amoled.jpg)
+<img src="images/t-display-s3-amoled.jpg" width="400" alt="ESP32-S3 T-Display AMOLED">
 
 **Technologies:** ESP32-S3 (dual-core, 240 MHz) · Wi-Fi/BLE · 1.43" AMOLED · QSPI · LVGL 8.3.11
 
@@ -61,7 +61,7 @@ The brain and the screen in one. This LilyGO T-Display S3 board runs the whole f
 
 ### BNO085 9-DOF IMU
 
-![BNO085 IMU](images/bno085-imu.jpg)
+<img src="images/bno085-imu.jpg" width="400" alt="BNO085 IMU">
 
 **Technologies:** Adafruit BNO085 breakout · accelerometer + gyroscope + magnetometer · on-chip sensor fusion (rotation vector) · I2C/SPI · STEMMA QT / Qwiic
 
@@ -69,13 +69,13 @@ A 9-DOF IMU with an on-board fusion engine. Instead of fusing raw accel/gyro/mag
 
 ### Gear knob
 
-![Gear knob](images/gear-knob.avif)
+<img src="images/gear-knob.avif" width="400" alt="Gear knob">
 
 The physical knob that replaces the stock one. The IMU is embedded inside the knob, which is the mechanical integration of the whole project into the car: power and electronics live inside the knob, and the display faces the driver.
 
 ### Flutter app (scuffy)
 
-![Flutter companion app](images/flutter-app.jpeg)
+<img src="images/flutter-app.jpeg" width="260" alt="Flutter companion app">
 
 **Technologies:** Flutter · Dart · flutter_blue_plus · permission_handler · shared_preferences
 

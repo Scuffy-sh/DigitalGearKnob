@@ -53,7 +53,7 @@ En la placa convergen dos flujos de datos: el cuaternión del sensor llega por I
 
 ### ESP32-S3 T-Display AMOLED
 
-![ESP32-S3 T-Display AMOLED](images/t-display-s3-amoled.jpg)
+<img src="images/t-display-s3-amoled.jpg" width="400" alt="ESP32-S3 T-Display AMOLED">
 
 **Tecnologías:** ESP32-S3 (doble núcleo, 240 MHz) · Wi-Fi/BLE · AMOLED de 1.43" · QSPI · LVGL 8.3.11
 
@@ -61,7 +61,7 @@ El cerebro y la pantalla en una sola placa. Esta placa LilyGO T-Display S3 ejecu
 
 ### IMU BNO085 de 9 grados de libertad
 
-![IMU BNO085](images/bno085-imu.jpg)
+<img src="images/bno085-imu.jpg" width="400" alt="IMU BNO085">
 
 **Tecnologías:** breakout Adafruit BNO085 · acelerómetro + giroscopio + magnetómetro · fusión de sensores integrada (rotation vector) · I2C/SPI · conector STEMMA QT / Qwiic
 
@@ -69,13 +69,13 @@ Un IMU de 9 grados de libertad con un motor de fusión integrado. En lugar de fu
 
 ### Pomo de cambios
 
-![Pomo de cambios](images/gear-knob.avif)
+<img src="images/gear-knob.avif" width="400" alt="Pomo de cambios">
 
 El pomo físico que sustituye al original. El IMU va embebido en el interior del pomo, que constituye la integración mecánica de todo el proyecto en el coche: la alimentación y la electrónica viven dentro del pomo, y la pantalla queda orientada hacia el conductor.
 
 ### App Flutter (scuffy)
 
-![App complementaria Flutter](images/flutter-app.jpeg)
+<img src="images/flutter-app.jpeg" width="260" alt="App complementaria Flutter">
 
 **Tecnologías:** Flutter · Dart · flutter_blue_plus · permission_handler · shared_preferences
 
