@@ -1,0 +1,15 @@
+# Agent tooling state
+.atl/
+
+# OS junk
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Editors
+.idea/
+.vscode/
+*.swp
+
+# Logs
+*.log
