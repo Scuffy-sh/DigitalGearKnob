@@ -197,6 +197,6 @@ Puntos de anclaje medidos en el coche: R (20.4, −4.7), 1 (13.6, −9.7), 3 (10
 - **Segundo IMU en la carrocería** para inmunidad total a las pendientes, eliminando por completo la limitación de ~3°.
 - **Tests unitarios en host para la lógica de zonas** — extender el arnés de pruebas nativo de la calibración a la detección 2D de marchas.
 
-## Licencia / Notas
+## Licencia
 
-Licencia no especificada.
+Este proyecto está bajo la [Licencia MIT](LICENSE).

@@ -197,6 +197,6 @@ Measured anchor points from the car: R (20.4, −4.7), 1 (13.6, −9.7), 3 (10.0
 - **Second IMU on the car body** for full slope immunity, removing the ~3° limitation entirely.
 - **Host-side unit tests for the zone logic** — extend the native test harness from calibration to the 2D gear detection.
 
-## License / Notes
+## License
 
-License not specified.
+This project is licensed under the [MIT License](LICENSE).
