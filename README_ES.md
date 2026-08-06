@@ -2,9 +2,9 @@
 
 **Leer en inglés → [README.md](README.md)**
 
-Un indicador digital de marchas para coches con caja manual. Un ESP32-S3 montado en la palanca de cambios lee la orientación 3D de la palanca mediante un IMU BNO085, detecta cuál de las siete posiciones (R, 1–5, N) ha seleccionado el conductor y lo muestra en una pantalla AMOLED con una animación de arco realizada en LVGL. El mismo dispositivo expone un servicio Bluetooth Low Energy que una app complementaria en Flutter ("scuffy") utiliza para depuración en vivo, personalización de tema y calibración.
+He creado este indicador digital de marchas desde cero — hardware, firmware y app. Un ESP32-S3 montado en la palanca de cambios lee la orientación 3D de la palanca mediante un IMU BNO085, detecta cuál de las siete posiciones (R, 1–5, N) ha seleccionado el conductor y lo muestra en una pantalla AMOLED con una animación de arco realizada en LVGL. El mismo dispositivo expone un servicio Bluetooth Low Energy que una app complementaria en Flutter ("scuffy") utiliza para depuración en vivo, personalización de tema y calibración.
 
-El problema que resuelve es sencillo: en muchos coches antiguos no existe indicador de marcha, y en los modernos suele estar lejos de la mano del conductor. Este proyecto muestra la marcha justo donde está tu mano, utilizando únicamente fusión de sensores — sin ningún contacto mecánico con la caja de cambios.
+¿Por qué? En muchos coches antiguos no existe indicador de marcha, y en los modernos suele estar lejos de la mano del conductor. Quería mostrar la marcha justo donde está tu mano, utilizando únicamente fusión de sensores — sin ningún contacto mecánico con la caja de cambios.
 
 ## Características principales
 
@@ -106,7 +106,7 @@ La solución es volver a capturar la referencia en tiempo de ejecución: cuando 
 
 Existe una **puerta de seguridad crítica**: la recaptura solo se activa cuando la marcha *detectada* es N o ambigua. Sin ella, la 5ª marcha (pitch −9.2°) entraría en la ventana de ±8° con una pendiente modesta y corrompería la referencia neutral mientras se conduce.
 
-**Limitación conocida.** Con un único IMU en la palanca, los desniveles sostenidos de más de ~3° no pueden distinguirse por completo de una posición real de marcha — una pendiente de esa magnitud desplaza todas las zonas en la misma cantidad. La solución definitiva es un segundo IMU montado en la carrocería, usando su orientación como referencia en lugar de una captura fija.
+**Limitación conocida.** Con un único IMU en la palanca, los desniveles sostenidos de más de ~3° no pueden distinguirse por completo de una posición real de marcha — una pendiente de esa magnitud desplaza todas las zonas en la misma cantidad. La solución prevista es leer la marcha directamente desde el bus CAN del coche, lo que elimina esta limitación por completo (ver [Mejoras](#mejoras)).
 
 ## Stack tecnológico
 
@@ -196,11 +196,13 @@ Las zonas de detección actuales se calibraron con mediciones reales tomadas den
 
 Puntos de anclaje medidos en el coche: R (20.4, −4.7), 1 (13.6, −9.7), 3 (10.0, −13.5), 5 (1.6, −9.2), N (0.9, 0.9), 2 (−5.1, 14.8), 4 (−9.6, 11.1) — mostrados como `(roll, pitch)`.
 
-## Hoja de ruta
+## Mejoras
 
+**Lectura de la marcha directamente desde el bus CAN del coche (CAN_L / CAN_H).** Mi siguiente paso es sustituir la detección basada en el BNO085 por una lectura directa del bus CAN del vehículo: en lugar de inferir la marcha a partir de la orientación de la palanca, el propio coche informa de qué marcha está engranada. Esto elimina todo el camino de fusión de sensores — sin calibración, sin compensación de pendientes y sin la limitación de ~3° — porque la lectura llega directamente del vehículo.
+
+Otras mejoras previstas:
 - **Notificación BLE dedicada `gear:X`** para que la app del teléfono muestre la marcha actual sin depuración ni sondeo.
 - **Asistente de calibración guiado en la app** — un flujo estructurado alrededor de la captura por marcha existente.
-- **Segundo IMU en la carrocería** para inmunidad total a las pendientes, eliminando por completo la limitación de ~3°.
 - **Tests unitarios en host para la lógica de zonas** — extender el arnés de pruebas nativo de la calibración a la detección 2D de marchas.
 
 ## Licencia

@@ -2,9 +2,9 @@
 
 **Read this in Spanish → [README_ES.md](README_ES.md)**
 
-A digital gear indicator for manual-transmission cars. An ESP32-S3 mounted on the gear stick reads the stick's 3D orientation from a BNO085 IMU, detects which of the seven gear positions (R, 1–5, N) the driver selected, and shows it on an AMOLED display with an LVGL animated arc. The same device exposes a Bluetooth Low Energy service that a Flutter companion app ("scuffy") uses for live debugging, theming, and calibration.
+I created this digital gear indicator from scratch — hardware, firmware, and app. An ESP32-S3 mounted on the gear stick reads the stick's 3D orientation from a BNO085 IMU, detects which of the seven gear positions (R, 1–5, N) the driver selected, and shows it on an AMOLED display with an LVGL animated arc. The same device exposes a Bluetooth Low Energy service that a Flutter companion app ("scuffy") uses for live debugging, theming, and calibration.
 
-The problem it solves is simple: on many older cars there is no gear indicator, and even on modern ones the display is often far from the driver's hand. This project puts the gear right where your hand is, using pure sensor fusion — no mechanical contact with the gearbox.
+Why? On many older cars there is no gear indicator, and even on modern ones the display is often far from the driver's hand. I wanted to put the gear right where your hand is, using pure sensor fusion — no mechanical contact with the gearbox.
 
 ## Key Features
 
@@ -106,7 +106,7 @@ The fix is to re-capture the reference at runtime: whenever the lever sits **wit
 
 There is a critical safety gate: recapture only triggers when the *detected* gear is N or ambiguous. Without it, 5th gear (pitch −9.2°) would enter the ±8° window on a modest slope and corrupt the neutral reference while driving.
 
-**Known limitation.** With a single IMU on the lever, sustained slope offsets beyond ~3° cannot be fully distinguished from a real gear position — a slope of that magnitude shifts every zone by the same amount. The definitive fix is a second IMU mounted on the car body, using its orientation as the reference instead of a fixed capture.
+**Known limitation.** With a single IMU on the lever, sustained slope offsets beyond ~3° cannot be fully distinguished from a real gear position — a slope of that magnitude shifts every zone by the same amount. The planned fix is to read the gear directly from the car's CAN bus, which removes this limitation entirely (see [Improvements](#improvements)).
 
 ## Tech Stack
 
@@ -196,11 +196,13 @@ The current detection zones were calibrated with real measurements taken inside 
 
 Measured anchor points from the car: R (20.4, −4.7), 1 (13.6, −9.7), 3 (10.0, −13.5), 5 (1.6, −9.2), N (0.9, 0.9), 2 (−5.1, 14.8), 4 (−9.6, 11.1) — shown as `(roll, pitch)`.
 
-## Roadmap
+## Improvements
 
+**Reading the gear directly from the car's CAN bus (CAN_L / CAN_H).** My next step is to replace the BNO085-based detection with a direct read from the vehicle's CAN bus: instead of inferring the gear from the stick's orientation, the car itself reports which gear is engaged. This removes the entire sensor-fusion path — no calibration, no slope compensation, and no ~3° limitation — because the reading comes straight from the vehicle.
+
+Other planned improvements:
 - **Dedicated `gear:X` BLE notification** so the phone app can display the current gear without debug mode or polling.
 - **Guided in-app calibration wizard** — a structured flow around the existing per-gear capture.
-- **Second IMU on the car body** for full slope immunity, removing the ~3° limitation entirely.
 - **Host-side unit tests for the zone logic** — extend the native test harness from calibration to the 2D gear detection.
 
 ## License
