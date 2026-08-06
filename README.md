@@ -4,8 +4,6 @@
 
 I created this digital gear indicator from scratch — hardware, firmware, and app. An ESP32-S3 mounted on the gear stick reads the stick's 3D orientation from a BNO085 IMU, detects which of the seven gear positions (R, 1–5, N) the driver selected, and shows it on an AMOLED display with an LVGL animated arc. The same device exposes a Bluetooth Low Energy service that a Flutter companion app ("scuffy") uses for live debugging, theming, and calibration.
 
-Why? On many older cars there is no gear indicator, and even on modern ones the display is often far from the driver's hand. I wanted to put the gear right where your hand is, using pure sensor fusion — no mechanical contact with the gearbox.
-
 ## Key Features
 
 - **7-gear H-pattern detection** (R, 1–5, N) from a single 9-DOF IMU mounted on the lever.

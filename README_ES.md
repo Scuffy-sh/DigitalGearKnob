@@ -4,8 +4,6 @@
 
 He creado este indicador digital de marchas desde cero — hardware, firmware y app. Un ESP32-S3 montado en la palanca de cambios lee la orientación 3D de la palanca mediante un IMU BNO085, detecta cuál de las siete posiciones (R, 1–5, N) ha seleccionado el conductor y lo muestra en una pantalla AMOLED con una animación de arco realizada en LVGL. El mismo dispositivo expone un servicio Bluetooth Low Energy que una app complementaria en Flutter ("scuffy") utiliza para depuración en vivo, personalización de tema y calibración.
 
-¿Por qué? En muchos coches antiguos no existe indicador de marcha, y en los modernos suele estar lejos de la mano del conductor. Quería mostrar la marcha justo donde está tu mano, utilizando únicamente fusión de sensores — sin ningún contacto mecánico con la caja de cambios.
-
 ## Características principales
 
 - **Detección del patrón H de 7 marchas** (R, 1–5, N) con un único IMU de 9 grados de libertad montado en la palanca.
