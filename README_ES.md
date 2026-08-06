@@ -4,16 +4,6 @@
 
 He creado este indicador digital de marchas desde cero — hardware, firmware y app. Un ESP32-S3 montado en la palanca de cambios lee la orientación 3D de la palanca mediante un IMU BNO085, detecta cuál de las siete posiciones (R, 1–5, N) ha seleccionado el conductor y lo muestra en una pantalla AMOLED con una animación de arco realizada en LVGL. El mismo dispositivo expone un servicio Bluetooth Low Energy que una app complementaria en Flutter ("scuffy") utiliza para depuración en vivo, personalización de tema y calibración.
 
-## Cómo se usa
-
-Usarlo solo lleva tres pasos:
-
-1. **Monta el pomo** en la palanca de cambios — la electrónica vive dentro del pomo, así que no hay nada más que instalar en el coche.
-2. **Arranca el coche** — la pantalla se enciende y muestra la marcha seleccionada automáticamente. La referencia neutral se captura al arrancar, así que no hace falta configuración.
-3. **Conecta la app del teléfono** (opcional) — escanea el dispositivo anunciado como `SCUFFY` para cambiar el color de acento, calibrar las marchas o ver los valores de depuración en vivo.
-
-Eso es todo — sin cableado en el salpicadero, sin configuración. El pomo detecta la marcha a partir de la orientación de la palanca y la muestra en la pantalla.
-
 ## Características principales
 
 - **Detección del patrón H de 7 marchas** (R, 1–5, N) con un único IMU de 9 grados de libertad montado en la palanca.

@@ -4,16 +4,6 @@
 
 I created this digital gear indicator from scratch — hardware, firmware, and app. An ESP32-S3 mounted on the gear stick reads the stick's 3D orientation from a BNO085 IMU, detects which of the seven gear positions (R, 1–5, N) the driver selected, and shows it on an AMOLED display with an LVGL animated arc. The same device exposes a Bluetooth Low Energy service that a Flutter companion app ("scuffy") uses for live debugging, theming, and calibration.
 
-## How to use it
-
-Using it takes three simple steps:
-
-1. **Mount the knob** on the gear stick — the electronics live inside the knob, so there is nothing else to install in the car.
-2. **Start the car** — the display turns on and shows the selected gear automatically. The neutral reference is captured at boot, so no setup is needed.
-3. **Connect the phone app** (optional) — scan for the device advertised as `SCUFFY` to change the accent color, calibrate the gears, or watch live debug values.
-
-That's it — no dashboard wiring, no configuration. The knob detects the gear from the stick's orientation and shows it on the screen.
-
 ## Key Features
 
 - **7-gear H-pattern detection** (R, 1–5, N) from a single 9-DOF IMU mounted on the lever.
