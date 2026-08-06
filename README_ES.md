@@ -77,11 +77,7 @@ El pomo físico que sustituye al original. El IMU va embebido en el interior del
 
 La vista abierta muestra el BNO085 y el ESP32-S3 conectados dentro del pomo antes de pegarlos; el producto final mantiene la pantalla orientada hacia el conductor, mostrando la marcha actual cuando está encendido.
 
-<img src="images/knob-open.jpeg" width="280" alt="Pomo abierto: BNO085 y ESP32-S3 conectados dentro">
-
-<img src="images/knob-final-off.jpeg" width="280" alt="Pomo final, pantalla apagada">
-
-<img src="images/knob-final-on.jpeg" width="280" alt="Pomo final, pantalla encendida">
+<img src="images/knob-open.jpeg" width="280" alt="Pomo abierto: BNO085 y ESP32-S3 conectados dentro"> <img src="images/knob-final-off.jpeg" width="280" alt="Pomo final, pantalla apagada"> <img src="images/knob-final-on.jpeg" width="280" alt="Pomo final, pantalla encendida">
 
 ### App Flutter (scuffy)
 

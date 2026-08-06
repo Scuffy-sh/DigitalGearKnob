@@ -77,11 +77,7 @@ The physical knob that replaces the stock one. The IMU is embedded inside the kn
 
 The open view shows the BNO085 and the ESP32-S3 wired inside the knob before they are glued in place; the final product keeps the display facing the driver, showing the current gear when powered on.
 
-<img src="images/knob-open.jpeg" width="280" alt="Knob open: BNO085 and ESP32-S3 wired inside">
-
-<img src="images/knob-final-off.jpeg" width="280" alt="Final knob, display off">
-
-<img src="images/knob-final-on.jpeg" width="280" alt="Final knob, display on">
+<img src="images/knob-open.jpeg" width="280" alt="Knob open: BNO085 and ESP32-S3 wired inside"> <img src="images/knob-final-off.jpeg" width="280" alt="Final knob, display off"> <img src="images/knob-final-on.jpeg" width="280" alt="Final knob, display on">
 
 ### Flutter app (scuffy)
 
