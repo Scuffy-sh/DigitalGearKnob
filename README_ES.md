@@ -73,6 +73,16 @@ Un IMU de 9 grados de libertad con un motor de fusión integrado. En lugar de fu
 
 El pomo físico que sustituye al original. El IMU va embebido en el interior del pomo, que constituye la integración mecánica de todo el proyecto en el coche: la alimentación y la electrónica viven dentro del pomo, y la pantalla queda orientada hacia el conductor.
 
+#### Ensamblaje
+
+La vista abierta muestra el BNO085 y el ESP32-S3 conectados dentro del pomo antes de pegarlos; el producto final mantiene la pantalla orientada hacia el conductor, mostrando la marcha actual cuando está encendido.
+
+<img src="images/knob-open.jpeg" width="280" alt="Pomo abierto: BNO085 y ESP32-S3 conectados dentro">
+
+<img src="images/knob-final-off.jpeg" width="280" alt="Pomo final, pantalla apagada">
+
+<img src="images/knob-final-on.jpeg" width="280" alt="Pomo final, pantalla encendida">
+
 ### App Flutter (scuffy)
 
 <img src="images/flutter-app.jpeg" width="260" alt="App complementaria Flutter">

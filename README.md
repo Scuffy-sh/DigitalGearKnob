@@ -73,6 +73,16 @@ A 9-DOF IMU with an on-board fusion engine. Instead of fusing raw accel/gyro/mag
 
 The physical knob that replaces the stock one. The IMU is embedded inside the knob, which is the mechanical integration of the whole project into the car: power and electronics live inside the knob, and the display faces the driver.
 
+#### Assembly
+
+The open view shows the BNO085 and the ESP32-S3 wired inside the knob before they are glued in place; the final product keeps the display facing the driver, showing the current gear when powered on.
+
+<img src="images/knob-open.jpeg" width="280" alt="Knob open: BNO085 and ESP32-S3 wired inside">
+
+<img src="images/knob-final-off.jpeg" width="280" alt="Final knob, display off">
+
+<img src="images/knob-final-on.jpeg" width="280" alt="Final knob, display on">
+
 ### Flutter app (scuffy)
 
 <img src="images/flutter-app.jpeg" width="260" alt="Flutter companion app">
