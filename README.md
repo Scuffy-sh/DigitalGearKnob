@@ -200,6 +200,18 @@ Measured anchor points from the car: R (20.4, −4.7), 1 (13.6, −9.7), 3 (10.0
 
 **Reading the gear directly from the car's CAN bus (CAN_L / CAN_H).** My next step is to replace the BNO085-based detection with a direct read from the vehicle's CAN bus: instead of inferring the gear from the stick's orientation, the car itself reports which gear is engaged. This removes the entire sensor-fusion path — no calibration, no slope compensation, and no ~3° limitation — because the reading comes straight from the vehicle.
 
+**And the display unlocks much more than the gear.** The AMOLED is already there — connecting to the CAN bus turns it into a real dashboard on the stick. The car broadcasts dozens of live signals, and the knob can render any of them on the 1.43" screen:
+
+- **Speed and engine RPM** — real-time values on the stick, no need to look away from the road.
+- **Engine coolant temperature** — an early warning for overheating.
+- **Fuel level** — remaining range at a glance.
+- **Battery voltage** — alternator health without extra sensors.
+- **Odometer / trip data** — where the car has been and how far.
+
+The gear becomes just one channel among many; the same knob, display, and BLE link already built for this project can present the whole vehicle. The image below shows the kind of data that is available over CAN:
+
+<img src="images/can-data.jpeg" width="280" alt="Vehicle data available over the CAN bus">
+
 Other planned improvements:
 - **Dedicated `gear:X` BLE notification** so the phone app can display the current gear without debug mode or polling.
 - **Guided in-app calibration wizard** — a structured flow around the existing per-gear capture.

@@ -200,6 +200,18 @@ Puntos de anclaje medidos en el coche: R (20.4, −4.7), 1 (13.6, −9.7), 3 (10
 
 **Lectura de la marcha directamente desde el bus CAN del coche (CAN_L / CAN_H).** Mi siguiente paso es sustituir la detección basada en el BNO085 por una lectura directa del bus CAN del vehículo: en lugar de inferir la marcha a partir de la orientación de la palanca, el propio coche informa de qué marcha está engranada. Esto elimina todo el camino de fusión de sensores — sin calibración, sin compensación de pendientes y sin la limitación de ~3° — porque la lectura llega directamente del vehículo.
 
+**Y la pantalla desbloquea mucho más que la marcha.** La AMOLED ya está ahí — conectarse al bus CAN la convierte en un auténtico cuadro de instrumentos en la palanca. El coche transmite decenas de señales en vivo, y el pomo puede mostrar cualquiera de ellas en la pantalla de 1.43":
+
+- **Velocidad y revoluciones del motor** — valores en tiempo real en la palanca, sin apartar la vista de la carretera.
+- **Temperatura del refrigerante** — una alerta temprana ante el sobrecalentamiento.
+- **Nivel de combustible** — autonomía restante de un vistazo.
+- **Tensión de la batería** — salud del alternador sin sensores extra.
+- **Odómetro / datos de viaje** — dónde ha estado el coche y cuánto ha recorrido.
+
+La marcha pasa a ser un canal más entre muchos; el mismo pomo, la misma pantalla y el mismo enlace BLE ya construidos para este proyecto pueden presentar el vehículo completo. La imagen muestra el tipo de datos disponibles por CAN:
+
+<img src="images/can-data.jpeg" width="280" alt="Datos del vehículo disponibles por el bus CAN">
+
 Otras mejoras previstas:
 - **Notificación BLE dedicada `gear:X`** para que la app del teléfono muestre la marcha actual sin depuración ni sondeo.
 - **Asistente de calibración guiado en la app** — un flujo estructurado alrededor de la captura por marcha existente.
