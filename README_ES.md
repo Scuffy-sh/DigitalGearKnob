@@ -4,6 +4,16 @@
 
 He creado este indicador digital de marchas desde cero — hardware, firmware y app. Un ESP32-S3 montado en la palanca de cambios lee la orientación 3D de la palanca mediante un IMU BNO085, detecta cuál de las siete posiciones (R, 1–5, N) ha seleccionado el conductor y lo muestra en una pantalla AMOLED con una animación de arco realizada en LVGL. El mismo dispositivo expone un servicio Bluetooth Low Energy que una app complementaria en Flutter ("scuffy") utiliza para depuración en vivo, personalización de tema y calibración.
 
+## Cómo se usa
+
+Usarlo solo lleva tres pasos:
+
+1. **Monta el pomo** en la palanca de cambios — la electrónica vive dentro del pomo, así que no hay nada más que instalar en el coche.
+2. **Arranca el coche** — la pantalla se enciende y muestra la marcha seleccionada automáticamente. La referencia neutral se captura al arrancar, así que no hace falta configuración.
+3. **Conecta la app del teléfono** (opcional) — escanea el dispositivo anunciado como `SCUFFY` para cambiar el color de acento, calibrar las marchas o ver los valores de depuración en vivo.
+
+Eso es todo — sin cableado en el salpicadero, sin configuración. El pomo detecta la marcha a partir de la orientación de la palanca y la muestra en la pantalla.
+
 ## Características principales
 
 - **Detección del patrón H de 7 marchas** (R, 1–5, N) con un único IMU de 9 grados de libertad montado en la palanca.
@@ -150,34 +160,6 @@ ChatGPT/
 ├── images/                         # Imágenes del producto usadas en este README
 ```
 
-## Primeros pasos
-
-### Firmware (ESP32-S3)
-
-El entorno principal está definido en `platformio.ini` como `lilygo-t-display-s3` (framework Arduino). Con PlatformIO instalado:
-
-```bash
-cd DigitalGearKnob
-pio run -e lilygo-t-display-s3 -t upload
-pio device monitor -b 115200
-```
-
-El módulo de calibración también compila como entorno nativo de host para tests unitarios:
-
-```bash
-pio test -e native
-```
-
-### App Flutter
-
-```bash
-cd scuffy
-flutter pub get
-flutter run
-```
-
-La app escanea el dispositivo anunciado como `SCUFFY` y se conecta a él. Para activar la depuración en vivo, pulsa el toggle **DEBUG: OFF**: la app escribe `debug:on` en la característica de comandos BLE y el firmware comienza a notificar `debug:ROLL,PITCH,GEAR` una vez por ciclo de detección (~5 Hz). Los valores aparecen en el panel de depuración. Pulsar el toggle de nuevo envía `debug:off` y detiene el stream.
-
 ## Calibración
 
 Las zonas de detección actuales se calibraron con mediciones reales tomadas dentro del coche, y los umbrales de zona de `gears.cpp` provienen directamente de esas mediciones:
@@ -194,7 +176,7 @@ Las zonas de detección actuales se calibraron con mediciones reales tomadas den
 
 Puntos de anclaje medidos en el coche: R (20.4, −4.7), 1 (13.6, −9.7), 3 (10.0, −13.5), 5 (1.6, −9.2), N (0.9, 0.9), 2 (−5.1, 14.8), 4 (−9.6, 11.1) — mostrados como `(roll, pitch)`.
 
-## Mejoras
+## Mejoras en el futuro
 
 **Lectura de la marcha directamente desde el bus CAN del coche (CAN_L / CAN_H).** Mi siguiente paso es sustituir la detección basada en el BNO085 por una lectura directa del bus CAN del vehículo: en lugar de inferir la marcha a partir de la orientación de la palanca, el propio coche informa de qué marcha está engranada. Esto elimina todo el camino de fusión de sensores — sin calibración, sin compensación de pendientes y sin la limitación de ~3° — porque la lectura llega directamente del vehículo.
 

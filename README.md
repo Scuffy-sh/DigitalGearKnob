@@ -4,6 +4,16 @@
 
 I created this digital gear indicator from scratch — hardware, firmware, and app. An ESP32-S3 mounted on the gear stick reads the stick's 3D orientation from a BNO085 IMU, detects which of the seven gear positions (R, 1–5, N) the driver selected, and shows it on an AMOLED display with an LVGL animated arc. The same device exposes a Bluetooth Low Energy service that a Flutter companion app ("scuffy") uses for live debugging, theming, and calibration.
 
+## How to use it
+
+Using it takes three simple steps:
+
+1. **Mount the knob** on the gear stick — the electronics live inside the knob, so there is nothing else to install in the car.
+2. **Start the car** — the display turns on and shows the selected gear automatically. The neutral reference is captured at boot, so no setup is needed.
+3. **Connect the phone app** (optional) — scan for the device advertised as `SCUFFY` to change the accent color, calibrate the gears, or watch live debug values.
+
+That's it — no dashboard wiring, no configuration. The knob detects the gear from the stick's orientation and shows it on the screen.
+
 ## Key Features
 
 - **7-gear H-pattern detection** (R, 1–5, N) from a single 9-DOF IMU mounted on the lever.
@@ -150,34 +160,6 @@ ChatGPT/
 ├── images/                         # product images used by this README
 ```
 
-## Getting Started
-
-### Firmware (ESP32-S3)
-
-The main environment is defined in `platformio.ini` as `lilygo-t-display-s3` (Arduino framework). With PlatformIO installed:
-
-```bash
-cd DigitalGearKnob
-pio run -e lilygo-t-display-s3 -t upload
-pio device monitor -b 115200
-```
-
-The calibration module also builds as a native host environment for unit tests:
-
-```bash
-pio test -e native
-```
-
-### Flutter app
-
-```bash
-cd scuffy
-flutter pub get
-flutter run
-```
-
-The app scans for the device advertised as `SCUFFY` and connects to it. To enable live debugging, tap the **DEBUG: OFF** toggle: the app writes `debug:on` to the BLE command characteristic, and the firmware starts notifying `debug:ROLL,PITCH,GEAR` once per detection cycle (~5 Hz). The values appear in the debug panel. Tapping the toggle again sends `debug:off` and stops the stream.
-
 ## Calibration
 
 The current detection zones were calibrated with real measurements taken inside the car, and the zone thresholds in `gears.cpp` come directly from those measurements:
@@ -194,7 +176,7 @@ The current detection zones were calibrated with real measurements taken inside 
 
 Measured anchor points from the car: R (20.4, −4.7), 1 (13.6, −9.7), 3 (10.0, −13.5), 5 (1.6, −9.2), N (0.9, 0.9), 2 (−5.1, 14.8), 4 (−9.6, 11.1) — shown as `(roll, pitch)`.
 
-## Improvements
+## Future Improvements
 
 **Reading the gear directly from the car's CAN bus (CAN_L / CAN_H).** My next step is to replace the BNO085-based detection with a direct read from the vehicle's CAN bus: instead of inferring the gear from the stick's orientation, the car itself reports which gear is engaged. This removes the entire sensor-fusion path — no calibration, no slope compensation, and no ~3° limitation — because the reading comes straight from the vehicle.
 
