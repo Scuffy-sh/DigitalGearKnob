@@ -3,6 +3,8 @@
 #include <Arduino.h>
 #include <lvgl.h>
 #include "ui/ui.h"
+#include "ble/ble.h"
+#include "can/can.h"
 #include "gearsource/gearsource.h"
 
 //=====================================================
@@ -191,6 +193,13 @@ void gears_update()
     last_detection_time = millis();
 
     int8_t detected = gear_source_poll();
+
+    // v2 (design data flow debug): notificación BLE con valores CAN —
+    // debug:<GEAR>,<RPM>,<SPEED>,<CANSTAT>. ble_send_debug() no-op si el
+    // modo debug está apagado.
+    CanSnapshot snap;
+    can_get_snapshot(snap);
+    ble_send_debug(detected, snap.rpm, snap.speed_kmh, can_is_online());
 
     // Debug
     if (detected >= 0)

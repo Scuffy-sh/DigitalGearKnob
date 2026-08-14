@@ -4,6 +4,9 @@
 #include <cstring>
 #include <NimBLEDevice.h>
 
+#include "ble/ble_format.h"
+#include "can/can.h"
+#include "can/sniff.h"
 #include "gears/gears.h"
 #include "theme/theme.h"
 
@@ -23,6 +26,24 @@ static NimBLECharacteristic* commandCharacteristic;
 static bool debugMode = false;
 
 //=====================================================
+// NOTIFICACIONES
+//=====================================================
+
+/// Envía una línea de texto por la característica de comando.
+static void notifyLine(const char *line)
+{
+    if (commandCharacteristic == nullptr)
+    {
+        return;
+    }
+
+    commandCharacteristic->setValue(
+        reinterpret_cast<const uint8_t*>(line),
+        strlen(line));
+    commandCharacteristic->notify();
+}
+
+//=====================================================
 // RECHAZO DE COMANDOS REMOVIDOS (protocolo v2)
 //=====================================================
 
@@ -31,18 +52,9 @@ static bool debugMode = false;
 /// explícitamente para que un cliente desactualizado no falle).
 static void rejectRemovedCommand(const char *cmd)
 {
-    if (commandCharacteristic == nullptr)
-    {
-        return;
-    }
-
     char buffer[48];
     snprintf(buffer, sizeof(buffer), "error:removed:%s", cmd);
-
-    commandCharacteristic->setValue(
-        reinterpret_cast<const uint8_t*>(buffer),
-        strlen(buffer));
-    commandCharacteristic->notify();
+    notifyLine(buffer);
 }
 
 //=====================================================
@@ -174,6 +186,25 @@ class ServerCallbacks : public NimBLECharacteristicCallbacks
         }
 
         //=================================================
+        // SNIFF (protocolo v2 — design D6)
+        // Activa/desactiva el volcado de tramas CAN. Las líneas
+        // `sniff:<E|S><8hexid>:<datahex>` se notifican desde ble_update()
+        // drenando la cola del módulo can.
+        //=================================================
+
+        if (msg == "sniff:on")
+        {
+            sniff_set_enabled(true);
+            Serial.println("Sniff activado");
+        }
+
+        if (msg == "sniff:off")
+        {
+            sniff_set_enabled(false);
+            Serial.println("Sniff desactivado");
+        }
+
+        //=================================================
         // GET STATE (sync estado a la app)
         //=================================================
 
@@ -181,15 +212,20 @@ class ServerCallbacks : public NimBLECharacteristicCallbacks
         {
             Serial.println("Estado solicitado por la app");
 
-            // v2: sin bno:/cal_status:/cal_data: (flujos BNO removidos).
-            // Phase 5 añade can:ok|offline + proto:2 aquí.
-            char themeBuf[20];
-            snprintf(themeBuf, sizeof(themeBuf), "theme:#%06lX", (unsigned long)theme_get_primary());
+            // v2 (design data flow get_state): can:ok|offline, theme:#...,
+            // proto:2 — los flujos bno:/cal_status:/cal_data: fueron removidos.
+            char buf[32];
 
-            commandCharacteristic->setValue(
-                reinterpret_cast<const uint8_t*>(themeBuf),
-                strlen(themeBuf));
-            commandCharacteristic->notify();
+            snprintf(buf, sizeof(buf), "%s", can_is_online() ? "can:ok" : "can:offline");
+            notifyLine(buf);
+            delay(50);
+
+            snprintf(buf, sizeof(buf), "theme:#%06lX", (unsigned long)theme_get_primary());
+            notifyLine(buf);
+            delay(50);
+
+            snprintf(buf, sizeof(buf), "proto:2");
+            notifyLine(buf);
             delay(50);
 
             Serial.println("Estado enviado a la app");
@@ -237,9 +273,22 @@ void ble_init()
 
 void ble_update()
 {
-    // v2: todos los flujos acoplados al BNO085 (captura de calibración,
-    // stream de quaternions) fueron removidos en Phase 4. Phase 5 añade
-    // aquí el drenaje de la cola de sniff y las notificaciones can:*.
+    // v2 (design D6): el módulo can enqueuea líneas ya formateadas
+    // `sniff:<E|S><8hexid>:<datahex>` (limitadas a 20 Hz por el limiter) y
+    // `can:no_frames` (watchdog de bus silencioso). Este loop las drena y
+    // las notifica; toda la BLE notify queda acá, en el loop principal.
+    if (commandCharacteristic == nullptr)
+    {
+        return;
+    }
+
+    char line[CAN_SNIFF_TEXT_MAX];
+
+    while (can_sniff_take(line, sizeof(line)))
+    {
+        notifyLine(line);
+        Serial.println(line);
+    }
 }
 
 //=====================================================
@@ -256,18 +305,17 @@ bool ble_is_debug()
     return debugMode;
 }
 
-void ble_send_debug(float roll, float pitch, int8_t gear)
+void ble_send_debug(int8_t gear, float rpm, float speed, bool can_online)
 {
     if (!debugMode || !commandCharacteristic) return;
 
-    static const char* gearNames[] = {"R", "1", "2", "3", "4", "5", "N"};
-
+    // v2 (design data flow debug): debug:<GEAR>,<RPM>,<SPEED>,<CANSTAT>
     char buffer[64];
-    const char* gearName = (gear >= 0 && gear <= 6) ? gearNames[gear] : "??";
-    snprintf(buffer, sizeof(buffer), "debug:%.1f,%.1f,%s", roll, pitch, gearName);
 
-    commandCharacteristic->setValue(
-        reinterpret_cast<const uint8_t*>(buffer),
-        strlen(buffer));
-    commandCharacteristic->notify();
+    if (!ble_format_debug(buffer, sizeof(buffer), gear, rpm, speed, can_online))
+    {
+        return;
+    }
+
+    notifyLine(buffer);
 }
