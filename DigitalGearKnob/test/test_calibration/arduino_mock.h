@@ -29,3 +29,11 @@ public:
     size_t getBytes(const char *, void *, size_t) { return 0; }
     size_t putBytes(const char *, const void *, size_t) { return 0; }
 };
+
+class SerialClass
+{
+public:
+    void printf(const char *, ...) {}
+};
+
+static SerialClass Serial;

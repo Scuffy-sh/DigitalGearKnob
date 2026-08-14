@@ -1,23 +1,8 @@
 #pragma once
 
-#include <Arduino.h>
+#include <cstdint>
 
-//=====================================================
-// MARCHAS
-//=====================================================
-
-enum GearPosition : uint8_t
-{
-    GEAR_R = 0,
-    GEAR_1,
-    GEAR_2,
-    GEAR_3,
-    GEAR_4,
-    GEAR_5,
-    GEAR_N,
-
-    GEAR_COUNT
-};
+#include "geardecode/gear_types.h"
 
 //=====================================================
 // CALIBRACIÓN
@@ -51,5 +36,5 @@ GearCalibration calibration_get(GearPosition gear);
 bool calibration_is_valid(GearPosition gear);
 
 bool calibration_fromString(
-    const String &text,
+    const char *text,
     GearPosition &gear);

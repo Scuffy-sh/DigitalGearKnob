@@ -1,5 +1,8 @@
 #include "calibration.h"
 
+#include <cstdio>
+#include <cstring>
+
 #include <Preferences.h>
 
 //=====================================================
@@ -82,46 +85,51 @@ bool calibration_is_valid(GearPosition gear)
 //=====================================================
 
 bool calibration_fromString(
-    const String &text,
+    const char *text,
     GearPosition &gear)
 {
-    if (text == "R")
+    if (text == nullptr)
+    {
+        return false;
+    }
+
+    if (strcmp(text, "R") == 0)
     {
         gear = GEAR_R;
         return true;
     }
 
-    if (text == "1")
+    if (strcmp(text, "1") == 0)
     {
         gear = GEAR_1;
         return true;
     }
 
-    if (text == "2")
+    if (strcmp(text, "2") == 0)
     {
         gear = GEAR_2;
         return true;
     }
 
-    if (text == "3")
+    if (strcmp(text, "3") == 0)
     {
         gear = GEAR_3;
         return true;
     }
 
-    if (text == "4")
+    if (strcmp(text, "4") == 0)
     {
         gear = GEAR_4;
         return true;
     }
 
-    if (text == "5")
+    if (strcmp(text, "5") == 0)
     {
         gear = GEAR_5;
         return true;
     }
 
-    if (text == "N")
+    if (strcmp(text, "N") == 0)
     {
         gear = GEAR_N;
         return true;

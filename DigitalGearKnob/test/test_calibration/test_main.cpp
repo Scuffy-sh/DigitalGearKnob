@@ -275,3 +275,12 @@ void setup()
 }
 
 void loop() {}
+
+// Native entry point: the native env has no Arduino loop runner,
+// so bridge the Arduino-style setup()/loop() into a host main().
+int main()
+{
+    setup();
+    loop();
+    return 0;
+}

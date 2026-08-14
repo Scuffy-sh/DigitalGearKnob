@@ -146,7 +146,7 @@ class ServerCallbacks : public NimBLECharacteristicCallbacks
 
             GearPosition gear;
 
-            if (calibration_fromString(gearText, gear))
+            if (calibration_fromString(gearText.c_str(), gear))
             {
                 Serial.print("Iniciando calibración de ");
                 Serial.println(gearText);
