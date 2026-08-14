@@ -1,55 +1,22 @@
 #pragma once
 
-#include <Arduino.h>
+#include <cstdint>
+
+#include "geardecode/gear_types.h"
 
 //=====================================================
-// MARCHAS
+// CALIBRACIÓN (v2)
 //=====================================================
-
-enum GearPosition : uint8_t
-{
-    GEAR_R = 0,
-    GEAR_1,
-    GEAR_2,
-    GEAR_3,
-    GEAR_4,
-    GEAR_5,
-    GEAR_N,
-
-    GEAR_COUNT
-};
-
-//=====================================================
-// CALIBRACIÓN
-//=====================================================
-
-struct GearCalibration
-{
-    float w;
-    float x;
-    float y;
-    float z;
-
-    bool valid;
-};
+// La calibración por cuaterniones NVS fue removida (design: calibration
+// removal). El gear ratio ahora viene de la tabla estática GearRatioConfig
+// (src/geardecode/can_types.h); los datos NVS heredados se ignoran.
+// Sobrevive únicamente la conversión de texto -> marcha (spec calibration:
+// enum y fromString sin cambios) porque el protocolo y los tests la usan.
 
 //=====================================================
 // API
 //=====================================================
 
-void calibration_init();
-
-void calibration_save(
-    GearPosition gear,
-    float w,
-    float x,
-    float y,
-    float z);
-
-GearCalibration calibration_get(GearPosition gear);
-
-bool calibration_is_valid(GearPosition gear);
-
 bool calibration_fromString(
-    const String &text,
+    const char *text,
     GearPosition &gear);

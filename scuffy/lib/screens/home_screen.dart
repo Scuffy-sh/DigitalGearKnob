@@ -11,7 +11,7 @@ import '../services/ble_service.dart';
 import '../services/state_storage.dart';
 import '../widgets/gear_card.dart';
 import '../widgets/theme_card.dart';
-import 'gear_calibration_screen.dart';
+import 'sniff_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -28,31 +28,32 @@ class _HomeScreenState extends State<HomeScreen>
   Color customColor = const Color(0xFF0052FF);
   bool connected = false;
   bool scanning = false;
-  bool bnoAvailable = false;
   bool debugMode = false;
   String debugData = '';
+  bool? canOnline; // null = desconocido; true = can:ok; false = can:offline
+  int? protocolVersion;
 
   late TabController _tabController;
+
+  // Marchas soportadas por el knob (referencia estática, sin calibración).
+  static const List<Gear> gears = [
+    Gear.reverse,
+    Gear.first,
+    Gear.second,
+    Gear.third,
+    Gear.fourth,
+    Gear.fifth,
+    Gear.neutral,
+  ];
 
   // Theme streams
   StreamSubscription<bool>? _connectionStateSubscription;
   StreamSubscription<String>? _themeSubscription;
 
-  // Calibration streams (for effects tab)
-  final List<GearInfo> gears = [
-    GearInfo(gear: Gear.reverse),
-    GearInfo(gear: Gear.first),
-    GearInfo(gear: Gear.second),
-    GearInfo(gear: Gear.third),
-    GearInfo(gear: Gear.fourth),
-    GearInfo(gear: Gear.fifth),
-    GearInfo(gear: Gear.neutral),
-  ];
-
-  StreamSubscription<Map<String, bool>>? _calibrationStatusSubscription;
-  StreamSubscription<Map<String, List<double>>>? _calibrationDataSubscription;
-  StreamSubscription<bool>? _bnoStatusSubscription;
+  // v2 status streams
   StreamSubscription<String>? _debugSubscription;
+  StreamSubscription<bool?>? _canStatusSubscription;
+  StreamSubscription<int>? _protocolSubscription;
 
   @override
   void initState() {
@@ -61,7 +62,6 @@ class _HomeScreenState extends State<HomeScreen>
 
     // Carga inicial (async, no bloquea el frame)
     _loadCachedState();
-    _loadCachedCalibrations();
 
     // Suscripciones BLE diferidas al siguiente frame para
     // que la transición del splash sea fluida.
@@ -72,7 +72,10 @@ class _HomeScreenState extends State<HomeScreen>
         if (!mounted) return;
         setState(() {
           connected = isConnected;
-          if (!isConnected) bnoAvailable = false;
+          if (!isConnected) {
+            canOnline = null;
+            protocolVersion = null;
+          }
         });
       });
 
@@ -81,7 +84,7 @@ class _HomeScreenState extends State<HomeScreen>
         final colorValue = int.parse(hex.replaceFirst('#', '0xFF'));
         final color = Color(colorValue);
         final matchIndex = scuffyThemes.indexWhere(
-          (t) => !t.custom && t.color.value == color.value,
+          (t) => !t.custom && t.color.toARGB32() == color.toARGB32(),
         );
         setState(() {
           if (matchIndex >= 0) {
@@ -95,48 +98,18 @@ class _HomeScreenState extends State<HomeScreen>
         StateStorage.saveThemeColor(hex);
       });
 
-      _calibrationStatusSubscription =
-          bluetooth.calibrationStatusStream.listen((status) {
+      _canStatusSubscription = bluetooth.canStatusStream.listen((online) {
         if (!mounted) return;
         setState(() {
-          for (final gear in gears) {
-            final key = gear.gear.name;
-            gear.calibrated = status[key] ?? false;
-          }
-        });
-        StateStorage.saveCalibrationStatus(status);
-      });
-
-      _calibrationDataSubscription =
-          bluetooth.calibrationDataStream.listen((data) {
-        if (!mounted) return;
-        setState(() {
-          for (final gear in gears) {
-            final key = gear.gear.name;
-            if (data.containsKey(key)) {
-              final values = data[key]!;
-              gear.calibrated = true;
-              gear.w = values[0];
-              gear.x = values[1];
-              gear.y = values[2];
-              gear.z = values[3];
-              StateStorage.saveCalibrationData(
-                  key, values[0], values[1], values[2], values[3]);
-            } else if (!gear.calibrated) {
-              gear.w = 0;
-              gear.x = 0;
-              gear.y = 0;
-              gear.z = 0;
-            }
-          }
+          canOnline = online;
         });
       });
 
-      _bnoStatusSubscription =
-          bluetooth.bnoStatusStream.listen((available) {
+      _protocolSubscription =
+          bluetooth.protocolVersionStream.listen((version) {
         if (!mounted) return;
         setState(() {
-          bnoAvailable = available;
+          protocolVersion = version;
         });
       });
 
@@ -158,10 +131,9 @@ class _HomeScreenState extends State<HomeScreen>
     _tabController.dispose();
     _connectionStateSubscription?.cancel();
     _themeSubscription?.cancel();
-    _calibrationStatusSubscription?.cancel();
-    _calibrationDataSubscription?.cancel();
-    _bnoStatusSubscription?.cancel();
     _debugSubscription?.cancel();
+    _canStatusSubscription?.cancel();
+    _protocolSubscription?.cancel();
     super.dispose();
   }
 
@@ -275,7 +247,7 @@ class _HomeScreenState extends State<HomeScreen>
     if (cachedColor != null && mounted) {
       final colorValue = int.parse(cachedColor.replaceFirst('#', '0xFF'));
       final matchIndex = scuffyThemes.indexWhere(
-        (t) => !t.custom && t.color.value == Color(colorValue).value,
+        (t) => !t.custom && t.color.toARGB32() == Color(colorValue).toARGB32(),
       );
       setState(() {
         if (matchIndex >= 0) {
@@ -289,33 +261,30 @@ class _HomeScreenState extends State<HomeScreen>
     }
   }
 
-  // ── Calibration ────────────────────────────────────────
+  // ── Sniff ──────────────────────────────────────────────
 
-  Future<void> _loadCachedCalibrations() async {
-    final status = await StateStorage.loadCalibrationStatus();
-    final data = await StateStorage.loadCalibrationData();
-
-    if (!mounted) return;
-
-    setState(() {
-      for (final gear in gears) {
-        final key = gear.gear.name;
-        if (status[key] == true) {
-          gear.calibrated = true;
-          if (data != null && data.containsKey(key)) {
-            gear.w = data[key]![0];
-            gear.x = data[key]![1];
-            gear.y = data[key]![2];
-            gear.z = data[key]![3];
-          }
-        }
-      }
-    });
+  void _openSniffScreen() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SniffScreen(
+          bluetooth: bluetooth,
+          accentColor: customColor,
+        ),
+      ),
+    );
   }
 
   // ── Build helpers ──────────────────────────────────────
 
   Widget _buildConnectionArea() {
+    // Chip de estado del bus CAN (v2: reemplaza al chip IMU/BNO).
+    final (canColor, canLabel) = switch (canOnline) {
+      true => (customColor, "CAN: Conectado"),
+      false => (Colors.red, "CAN: Sin datos"),
+      null => (Colors.grey, "CAN: Sin datos"),
+    };
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Container(
@@ -393,26 +362,14 @@ class _HomeScreenState extends State<HomeScreen>
                 Icon(
                   Icons.circle,
                   size: 8,
-                  color: !connected
-                      ? Colors.grey
-                      : bnoAvailable
-                          ? customColor
-                          : Colors.red,
+                  color: !connected ? Colors.grey : canColor,
                 ),
                 const SizedBox(width: 6),
                 Text(
-                  !connected
-                      ? "IMU: Sin datos"
-                      : bnoAvailable
-                          ? "IMU: Conectado"
-                          : "IMU: Desconectado",
+                  canLabel,
                   style: TextStyle(
                     fontSize: 13,
-                    color: !connected
-                        ? Colors.grey
-                        : bnoAvailable
-                            ? customColor
-                            : Colors.red,
+                    color: !connected ? Colors.grey : canColor,
                   ),
                 ),
               ],
@@ -477,6 +434,57 @@ class _HomeScreenState extends State<HomeScreen>
                 ),
               ),
             ],
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              height: 44,
+              child: OutlinedButton.icon(
+                onPressed: connected ? _openSniffScreen : null,
+                icon: const Icon(Icons.radar, size: 20),
+                label: const Text("SNIFF CAN"),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: customColor,
+                  side: BorderSide(
+                    color: customColor.withValues(alpha: 0.5),
+                    width: 1,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ),
+
+            // Aviso de versión de firmware (v2): si el knob no reporta
+            // proto:2, el cliente queda desactualizado y avisa.
+            if (connected && protocolVersion != 2) ...[
+              const SizedBox(height: 8),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: Colors.orange.withValues(alpha: 0.4),
+                    width: 1,
+                  ),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.system_update_alt,
+                        size: 16, color: Colors.orange),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        "Firmware del knob desactualizado (se espera v2)",
+                        style: TextStyle(fontSize: 12, color: Colors.orange),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -516,52 +524,28 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  Widget _buildEffectsTab() {
-    return ListView.builder(
+  Widget _buildMarchasTab() {
+    return ListView(
       padding: const EdgeInsets.all(20),
-      itemCount: gears.length,
-      itemBuilder: (context, index) {
-        final gear = gears[index];
-
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 15),
-          child: GearCard(
-            gear: gear.gear.name,
-            calibrated: gear.calibrated,
+      children: [
+        const Text(
+          "Marchas del knob",
+          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          "Referencia de posiciones (la detección es automática por CAN).",
+          style: TextStyle(color: Colors.white54, fontSize: 13),
+        ),
+        const SizedBox(height: 16),
+        for (final gear in gears) ...[
+          GearCard(
+            gear: gear.name,
             accentColor: customColor,
-            onTap: () async {
-              final result = await Navigator.push<GearCalibrationResult>(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => GearCalibrationScreen(
-                    gear: gear.gear.name,
-                    bluetooth: bluetooth,
-                    accentColor: customColor,
-                    savedCalibration: gear.calibrated
-                        ? GearCalibrationResult(
-                            w: gear.w,
-                            x: gear.x,
-                            y: gear.y,
-                            z: gear.z,
-                          )
-                        : null,
-                  ),
-                ),
-              );
-
-              if (result != null) {
-                setState(() {
-                  gear.calibrated = true;
-                  gear.w = result.w;
-                  gear.x = result.x;
-                  gear.y = result.y;
-                  gear.z = result.z;
-                });
-              }
-            },
           ),
-        );
-      },
+          const SizedBox(height: 12),
+        ],
+      ],
     );
   }
 
@@ -617,7 +601,7 @@ class _HomeScreenState extends State<HomeScreen>
                   controller: _tabController,
                   children: [
                     _buildColorTab(),
-                    _buildEffectsTab(),
+                    _buildMarchasTab(),
                   ],
                 ),
               ),
@@ -642,7 +626,7 @@ class _HomeScreenState extends State<HomeScreen>
           unselectedLabelColor: Colors.white54,
           tabs: const [
             Tab(icon: Icon(Icons.palette), text: "Color"),
-            Tab(icon: Icon(Icons.tune), text: "Calibración"),
+            Tab(icon: Icon(Icons.settings), text: "Marchas"),
           ],
         ),
       ),

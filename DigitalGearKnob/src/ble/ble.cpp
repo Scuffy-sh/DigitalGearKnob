@@ -4,11 +4,11 @@
 #include <cstring>
 #include <NimBLEDevice.h>
 
+#include "ble/ble_format.h"
+#include "can/can.h"
+#include "can/sniff.h"
 #include "gears/gears.h"
 #include "theme/theme.h"
-
-#include "bno/bno.h"
-#include "calibration/calibration.h"
 
 //=====================================================
 // UUIDs BLE
@@ -20,28 +20,42 @@
 static NimBLECharacteristic* commandCharacteristic;
 
 //=====================================================
-// CALIBRACIÓN
-//=====================================================
-
-static bool calibrationPending = false;
-static GearPosition calibrationGear;
-static uint32_t calibrationStartTime = 0;
-
-static Quaternion lastQuaternion;
-static bool quaternionReceived = false;
-
-//=====================================================
-// STREAM BNO
-//=====================================================
-
-static bool streamEnabled = false;
-static uint32_t lastStreamTime = 0;
-
-//=====================================================
 // DEBUG MODE
 //=====================================================
 
 static bool debugMode = false;
+
+//=====================================================
+// NOTIFICACIONES
+//=====================================================
+
+/// Envía una línea de texto por la característica de comando.
+static void notifyLine(const char *line)
+{
+    if (commandCharacteristic == nullptr)
+    {
+        return;
+    }
+
+    commandCharacteristic->setValue(
+        reinterpret_cast<const uint8_t*>(line),
+        strlen(line));
+    commandCharacteristic->notify();
+}
+
+//=====================================================
+// RECHAZO DE COMANDOS REMOVIDOS (protocolo v2)
+//=====================================================
+
+/// Notifica `error:removed:<cmd>` para flujos que ya no existen
+/// (spec ble-protocol: los comandos removidos deben rechazarse
+/// explícitamente para que un cliente desactualizado no falle).
+static void rejectRemovedCommand(const char *cmd)
+{
+    char buffer[48];
+    snprintf(buffer, sizeof(buffer), "error:removed:%s", cmd);
+    notifyLine(buffer);
+}
 
 //=====================================================
 // CALLBACK RECEPCION
@@ -137,70 +151,22 @@ class ServerCallbacks : public NimBLECharacteristicCallbacks
         }
         
         //=================================================
-        // CALIBRACIÓN
+        // COMANDOS REMOVIDOS (protocolo v2 — spec ble-protocol)
+        // Los flujos acoplados al BNO085 (calibrate:, stream:on/off y las
+        // notificaciones quat:) ya no existen. Un cliente desactualizado
+        // recibe una rechazo explícito para no malinterpretar respuestas.
         //=================================================
 
         if (msg.startsWith("calibrate:"))
         {
-            String gearText = msg.substring(10);
-
-            GearPosition gear;
-
-            if (calibration_fromString(gearText, gear))
-            {
-                Serial.print("Iniciando calibración de ");
-                Serial.println(gearText);
-
-                calibrationGear = gear;
-                calibrationPending = true;
-                calibrationStartTime = millis();
-                quaternionReceived = false;
-
-                if (streamEnabled)
-                {
-                    streamEnabled = false;
-                    Serial.println("Stream desactivado (calibración en curso)");
-
-                    static constexpr char streamOff[] = "stream:off";
-                    commandCharacteristic->setValue(
-                        reinterpret_cast<const uint8_t*>(streamOff),
-                        sizeof(streamOff) - 1);
-                    commandCharacteristic->notify();
-                }
-            }
-            else
-            {
-                Serial.println("Marcha no válida");
-            }
+            Serial.println("calibrate: removido (v2)");
+            rejectRemovedCommand("calibrate");
         }
 
-        //=================================================
-        // STREAM
-        //=================================================
-
-        if (msg == "stream:on")
+        if (msg == "stream:on" || msg == "stream:off")
         {
-            if (calibrationPending)
-            {
-                Serial.println("Stream rechazado (calibración en curso)");
-
-                static constexpr char rejected[] = "stream:rejected";
-                commandCharacteristic->setValue(
-                    reinterpret_cast<const uint8_t*>(rejected),
-                    sizeof(rejected) - 1);
-                commandCharacteristic->notify();
-            }
-            else
-            {
-                streamEnabled = true;
-                Serial.println("Stream activado");
-            }
-        }
-
-        if (msg == "stream:off")
-        {
-            streamEnabled = false;
-            Serial.println("Stream desactivado");
+            Serial.println("stream: removido (v2)");
+            rejectRemovedCommand("stream");
         }
 
         //=================================================
@@ -220,6 +186,25 @@ class ServerCallbacks : public NimBLECharacteristicCallbacks
         }
 
         //=================================================
+        // SNIFF (protocolo v2 — design D6)
+        // Activa/desactiva el volcado de tramas CAN. Las líneas
+        // `sniff:<E|S><8hexid>:<datahex>` se notifican desde ble_update()
+        // drenando la cola del módulo can.
+        //=================================================
+
+        if (msg == "sniff:on")
+        {
+            sniff_set_enabled(true);
+            Serial.println("Sniff activado");
+        }
+
+        if (msg == "sniff:off")
+        {
+            sniff_set_enabled(false);
+            Serial.println("Sniff desactivado");
+        }
+
+        //=================================================
         // GET STATE (sync estado a la app)
         //=================================================
 
@@ -227,64 +212,21 @@ class ServerCallbacks : public NimBLECharacteristicCallbacks
         {
             Serial.println("Estado solicitado por la app");
 
-            // Estado del sensor BNO085
-            const char* bnoStatus = bno_is_available() ? "bno:ok" : "bno:error";
-            commandCharacteristic->setValue(
-                reinterpret_cast<const uint8_t*>(bnoStatus),
-                strlen(bnoStatus));
-            commandCharacteristic->notify();
+            // v2 (design data flow get_state): can:ok|offline, theme:#...,
+            // proto:2 — los flujos bno:/cal_status:/cal_data: fueron removidos.
+            char buf[32];
+
+            snprintf(buf, sizeof(buf), "%s", can_is_online() ? "can:ok" : "can:offline");
+            notifyLine(buf);
             delay(50);
 
-            char themeBuf[20];
-            snprintf(themeBuf, sizeof(themeBuf), "theme:#%06lX", (unsigned long)theme_get_primary());
-
-            commandCharacteristic->setValue(
-                reinterpret_cast<const uint8_t*>(themeBuf),
-                strlen(themeBuf));
-            commandCharacteristic->notify();
+            snprintf(buf, sizeof(buf), "theme:#%06lX", (unsigned long)theme_get_primary());
+            notifyLine(buf);
             delay(50);
 
-            char calStatus[GEAR_COUNT + 1];
-            for (uint8_t i = 0; i < GEAR_COUNT; i++)
-            {
-                calStatus[i] = calibration_is_valid((GearPosition)i) ? '1' : '0';
-            }
-            calStatus[GEAR_COUNT] = '\0';
-
-            char calBuf[30];
-            snprintf(calBuf, sizeof(calBuf), "cal_status:%s", calStatus);
-
-            commandCharacteristic->setValue(
-                reinterpret_cast<const uint8_t*>(calBuf),
-                strlen(calBuf));
-            commandCharacteristic->notify();
+            snprintf(buf, sizeof(buf), "proto:2");
+            notifyLine(buf);
             delay(50);
-
-            static const char gearNames[] = "R12345N";
-
-            for (uint8_t i = 0; i < GEAR_COUNT; i++)
-            {
-                if (!calibration_is_valid((GearPosition)i))
-                {
-                    continue;
-                }
-
-                GearCalibration cal = calibration_get((GearPosition)i);
-
-                char calData[80];
-                snprintf(
-                    calData,
-                    sizeof(calData),
-                    "cal_data:%c:%.4f,%.4f,%.4f,%.4f",
-                    gearNames[i],
-                    cal.w, cal.x, cal.y, cal.z);
-
-                commandCharacteristic->setValue(
-                    reinterpret_cast<const uint8_t*>(calData),
-                    strlen(calData));
-                commandCharacteristic->notify();
-                delay(50);
-            }
 
             Serial.println("Estado enviado a la app");
         }
@@ -331,102 +273,21 @@ void ble_init()
 
 void ble_update()
 {
-    if (calibrationPending)
+    // v2 (design D6): el módulo can enqueuea líneas ya formateadas
+    // `sniff:<E|S><8hexid>:<datahex>` (limitadas a 20 Hz por el limiter) y
+    // `can:no_frames` (watchdog de bus silencioso). Este loop las drena y
+    // las notifica; toda la BLE notify queda acá, en el loop principal.
+    if (commandCharacteristic == nullptr)
     {
-        Quaternion q;
-
-        // Vamos guardando siempre la última lectura válida
-        if (bno_readQuaternion(q))
-        {
-            lastQuaternion = q;
-            quaternionReceived = true;
-        }
-
-        // Esperamos aproximadamente 100 ms
-        if (millis() - calibrationStartTime < 100)
-        {
-            return;
-        }
-
-        calibrationPending = false;
-
-        if (!quaternionReceived)
-        {
-            // Intentar una recuperación del sensor antes de fallar
-            Serial.println("BNO no respondió, intentando reset para calibración...");
-            if (bno_reset())
-            {
-                // Reintentar una lectura tras el reset
-                delay(100);
-                if (bno_readQuaternion(q))
-                {
-                    lastQuaternion = q;
-                    quaternionReceived = true;
-                }
-            }
-
-            if (!quaternionReceived)
-            {
-                Serial.println("No se recibió ningún quaternion tras recuperación");
-                return;
-            }
-        }
-
-        calibration_save(
-            calibrationGear,
-            lastQuaternion.w,
-            lastQuaternion.x,
-            lastQuaternion.y,
-            lastQuaternion.z);
-
-        Serial.println("--------------------------------");
-
-        Serial.println("Calibración guardada");
-        static constexpr char calibrationOk[] = "calibration_ok";
-        commandCharacteristic->setValue(
-            reinterpret_cast<const uint8_t*>(calibrationOk),
-            sizeof(calibrationOk) - 1);
-        commandCharacteristic->notify();
-
-        Serial.printf(
-            "W: %.4f  X: %.4f  Y: %.4f  Z: %.4f\n",
-            lastQuaternion.w,
-            lastQuaternion.x,
-            lastQuaternion.y,
-            lastQuaternion.z);
-
-        Serial.println("--------------------------------");
-
         return;
     }
 
-    if (streamEnabled)
+    char line[CAN_SNIFF_TEXT_MAX];
+
+    while (can_sniff_take(line, sizeof(line)))
     {
-        if (millis() - lastStreamTime >= 50)
-        {
-            lastStreamTime = millis();
-
-            Quaternion q;
-
-            if (bno_readQuaternion(q))
-            {
-                char buffer[80];
-
-                snprintf(
-                    buffer,
-                    sizeof(buffer),
-                    "quat:%.4f,%.4f,%.4f,%.4f",
-                    q.w,
-                    q.x,
-                    q.y,
-                    q.z);
-
-                commandCharacteristic->setValue(
-                    reinterpret_cast<const uint8_t*>(buffer),
-                    strlen(buffer));
-                commandCharacteristic->notify();
-            }
-        }
+        notifyLine(line);
+        Serial.println(line);
     }
 }
 
@@ -444,18 +305,17 @@ bool ble_is_debug()
     return debugMode;
 }
 
-void ble_send_debug(float roll, float pitch, int8_t gear)
+void ble_send_debug(int8_t gear, float rpm, float speed, bool can_online)
 {
     if (!debugMode || !commandCharacteristic) return;
 
-    static const char* gearNames[] = {"R", "1", "2", "3", "4", "5", "N"};
-
+    // v2 (design data flow debug): debug:<GEAR>,<RPM>,<SPEED>,<CANSTAT>
     char buffer[64];
-    const char* gearName = (gear >= 0 && gear <= 6) ? gearNames[gear] : "??";
-    snprintf(buffer, sizeof(buffer), "debug:%.1f,%.1f,%s", roll, pitch, gearName);
 
-    commandCharacteristic->setValue(
-        reinterpret_cast<const uint8_t*>(buffer),
-        strlen(buffer));
-    commandCharacteristic->notify();
+    if (!ble_format_debug(buffer, sizeof(buffer), gear, rpm, speed, can_online))
+    {
+        return;
+    }
+
+    notifyLine(buffer);
 }

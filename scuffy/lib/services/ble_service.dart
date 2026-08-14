@@ -4,8 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 
-import '../models/quaternion_data.dart';
-
 class BleService {
   //=====================================================
   // SINGLETON
@@ -28,46 +26,37 @@ class BleService {
   bool _isConnected = false;
 
   //=====================================================
-  // STREAMS
+  // STREAMS (protocolo v2 — design "Protocolo BLE v2")
   //=====================================================
-
-  final StreamController<QuaternionData> _quaternionController =
-      StreamController.broadcast();
-
-  final StreamController<void> _calibrationController =
-      StreamController.broadcast();
 
   final StreamController<bool> _connectionStateController =
       StreamController<bool>.broadcast();
 
-  Stream<QuaternionData> get quaternionStream => _quaternionController.stream;
-
-  Stream<void> get calibrationFinished => _calibrationController.stream;
-
-  Stream<bool> get connectionState => _connectionStateController.stream;
-
   final StreamController<String> _themeColorController =
       StreamController.broadcast();
-  final StreamController<Map<String, bool>> _calibrationStatusController =
-      StreamController.broadcast();
-  final StreamController<Map<String, List<double>>>
-      _calibrationDataController = StreamController.broadcast();
-  final StreamController<bool> _bnoStatusController =
-      StreamController<bool>.broadcast();
+
   final StreamController<String> _debugController =
-      StreamController<String>.broadcast();
+      StreamController.broadcast();
 
+  // Líneas completas de sniff ("sniff:<E|S><8hexid>:<datahex>" y la
+  // alerta del watchdog "can:no_frames"). Se parsean con parseSniffFrame
+  // / SniffSession en la capa de vista.
+  final StreamController<String> _sniffController =
+      StreamController.broadcast();
+
+  // Estado del bus CAN: true = can:ok, false = can:offline, null = desconocido.
+  final StreamController<bool?> _canStatusController =
+      StreamController.broadcast();
+
+  final StreamController<int> _protocolVersionController =
+      StreamController.broadcast();
+
+  Stream<bool> get connectionState => _connectionStateController.stream;
   Stream<String> get themeColorStream => _themeColorController.stream;
-  Stream<Map<String, bool>> get calibrationStatusStream =>
-      _calibrationStatusController.stream;
-  Stream<Map<String, List<double>>> get calibrationDataStream =>
-      _calibrationDataController.stream;
-  Stream<bool> get bnoStatusStream => _bnoStatusController.stream;
   Stream<String> get debugStream => _debugController.stream;
-
-  final Map<String, List<double>> _pendingCalData = {};
-  int _pendingCalExpected = 0;
-  Timer? _calDataTimer;
+  Stream<String> get sniffStream => _sniffController.stream;
+  Stream<bool?> get canStatusStream => _canStatusController.stream;
+  Stream<int> get protocolVersionStream => _protocolVersionController.stream;
 
   StreamSubscription<List<int>>? _notifySubscription;
   StreamSubscription<BluetoothConnectionState>? _connectionStateSubscription;
@@ -193,8 +182,11 @@ class BleService {
   }
 
   //=====================================================
-  // PROCESAR NOTIFICACIONES BLE
+  // PROCESAR NOTIFICACIONES BLE (protocolo v2)
   //=====================================================
+  // v2: los flujos BNO (quat:, calibration_ok, cal_status:, cal_data:,
+  // bno:ok/error) fueron removidos del firmware. Quedan: theme:, debug:,
+  // sniff:*, can:ok|offline, can:no_frames y proto:N.
 
   void _processNotification(List<int> data) {
     if (data.isEmpty) return;
@@ -205,96 +197,46 @@ class BleService {
 
     debugPrint("BLE Notify -> $message");
 
-    // Quaternion
-    if (message.startsWith("quat:")) {
-      final values = message.substring(5).split(",");
-
-      if (values.length != 4) return;
-      try {
-        _quaternionController.add(
-          QuaternionData(
-            w: double.parse(values[0]),
-            x: double.parse(values[1]),
-            y: double.parse(values[2]),
-            z: double.parse(values[3]),
-          ),
-        );
-      } catch (_) {}
-    }
-
-    // Calibración terminada
-    if (message == "calibration_ok") {
-      _calibrationController.add(null);
-    }
-
     // Theme color from ESP
     if (message.startsWith("theme:")) {
       final hex = message.substring(6);
       _themeColorController.add(hex);
+      return;
     }
 
-    // BNO085 sensor status
-    if (message == "bno:ok") {
-      _bnoStatusController.add(true);
-    } else if (message == "bno:error") {
-      _bnoStatusController.add(false);
-    }
-
-    // Debug data from ESP
+    // Debug data from ESP (payload bruto; se parsea con parseCanDebug)
     if (message.startsWith("debug:")) {
       _debugController.add(message.substring(6));
+      return;
     }
 
-    // Calibration status from ESP
-    if (message.startsWith("cal_status:")) {
-      final statusStr = message.substring(11);
-      final gears = ['R', '1', '2', '3', '4', '5', 'N'];
-      final status = <String, bool>{};
-      int expected = 0;
-      for (int i = 0; i < gears.length && i < statusStr.length; i++) {
-        final calibrated = statusStr[i] == '1';
-        status[gears[i]] = calibrated;
-        if (calibrated) expected++;
+    // Sniff frames y alerta de bus silencioso
+    if (message.startsWith("sniff:") || message == "can:no_frames") {
+      _sniffController.add(message);
+      return;
+    }
+
+    // CAN bus status
+    if (message == "can:ok") {
+      _canStatusController.add(true);
+      return;
+    }
+
+    if (message == "can:offline") {
+      _canStatusController.add(false);
+      return;
+    }
+
+    // Firmware protocol version
+    if (message.startsWith("proto:")) {
+      final version = int.tryParse(message.substring(6));
+      if (version != null) {
+        _protocolVersionController.add(version);
       }
-      _calibrationStatusController.add(status);
-
-      _pendingCalData.clear();
-      _pendingCalExpected = expected;
-      _calDataTimer?.cancel();
-
-      if (expected > 0) {
-        _calDataTimer = Timer(const Duration(seconds: 2), _flushCalData);
-      }
+      return;
     }
 
-    // Calibration data from ESP
-    if (message.startsWith("cal_data:")) {
-      final payload = message.substring(9);
-      final colonIndex = payload.indexOf(':');
-      if (colonIndex > 0 && colonIndex < payload.length - 1) {
-        final gear = payload.substring(0, colonIndex);
-        final values = payload.substring(colonIndex + 1).split(',');
-        if (values.length == 4) {
-          try {
-            final data = values.map((e) => double.parse(e)).toList();
-            _pendingCalData[gear] = data;
-
-            if (_pendingCalData.length >= _pendingCalExpected) {
-              _calDataTimer?.cancel();
-              _flushCalData();
-            }
-          } catch (_) {}
-        }
-      }
-    }
-  }
-
-  void _flushCalData() {
-    if (_pendingCalData.isNotEmpty) {
-      _calibrationDataController.add(Map.from(_pendingCalData));
-    }
-    _pendingCalData.clear();
-    _pendingCalExpected = 0;
+    // Cualquier otro mensaje (error:removed:* etc.) se ignora.
   }
 
   //=====================================================
@@ -307,7 +249,8 @@ class BleService {
       return;
     }
 
-    final hex = "#${color.value.toRadixString(16).substring(2).toUpperCase()}";
+    final hex =
+        "#${color.toARGB32().toRadixString(16).substring(2).toUpperCase()}";
 
     final command = "set_color:$hex";
 
@@ -320,23 +263,18 @@ class BleService {
   }
 
   //=====================================================
-  // STREAM BNO
+  // SNIFF (protocolo v2)
   //=====================================================
 
-  Future<void> startStream() async {
+  Future<void> sendSniff(bool enabled) async {
     if (_commandCharacteristic == null) return;
 
-    await _commandCharacteristic!.write(
-      "stream:on".codeUnits,
-      withoutResponse: false,
-    );
-  }
+    final command = enabled ? "sniff:on" : "sniff:off";
 
-  Future<void> stopStream() async {
-    if (_commandCharacteristic == null) return;
+    debugPrint("Enviando -> $command");
 
     await _commandCharacteristic!.write(
-      "stream:off".codeUnits,
+      command.codeUnits,
       withoutResponse: false,
     );
   }
@@ -357,19 +295,6 @@ class BleService {
     if (_commandCharacteristic == null) return;
     await _commandCharacteristic!.write(
       "debug:off".codeUnits,
-      withoutResponse: false,
-    );
-  }
-
-  //=====================================================
-  // CALIBRACIÓN
-  //=====================================================
-
-  Future<void> sendCalibration(String gear) async {
-    if (_commandCharacteristic == null) return;
-
-    await _commandCharacteristic!.write(
-      "calibrate:$gear".codeUnits,
       withoutResponse: false,
     );
   }
@@ -398,10 +323,7 @@ class BleService {
     await _connectionStateSubscription?.cancel();
     _connectionStateSubscription = null;
 
-    _calDataTimer?.cancel();
-    _pendingCalData.clear();
-    _pendingCalExpected = 0;
-    _bnoStatusController.add(false);
+    _canStatusController.add(null);
     _debugController.add('');
 
     if (device != null) {

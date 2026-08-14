@@ -22,10 +22,10 @@ class _SplashScreenState extends State<SplashScreen> {
       Navigator.pushReplacement(
         context,
         PageRouteBuilder(
-          pageBuilder: (_, __, ___) => const HomeScreen(),
+          pageBuilder: (_, _, _) => const HomeScreen(),
           transitionDuration: const Duration(milliseconds: 600),
           reverseTransitionDuration: const Duration(milliseconds: 600),
-          transitionsBuilder: (_, animation, __, child) {
+          transitionsBuilder: (_, animation, _, child) {
             return FadeTransition(
               opacity: animation,
               child: child,

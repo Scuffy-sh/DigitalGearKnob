@@ -41,3 +41,8 @@
 
 // PCF8563
 #define PCF8563_INT 9
+
+// CAN transceiver (Waveshare SN65HVD230, v2 gear detection)
+// TWAI listen-only tap on the drivetrain bus (src/can/can.h).
+#define CAN_TX_PIN 3
+#define CAN_RX_PIN 5
