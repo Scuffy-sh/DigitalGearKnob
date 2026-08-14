@@ -87,6 +87,6 @@ ACK; if the DUT were transmitting, the peer would see errors on the wire.
 | Bench operator | ____________ |
 | Date | ____________ |
 | Firmware commit/branch | ____________ |
-| Checks passed | ___ / 26 |
+| Checks passed | ___ / 24 |
 
 Notes (deviations, observations):
