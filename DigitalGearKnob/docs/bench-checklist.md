@@ -90,3 +90,12 @@ ACK; if the DUT were transmitting, the peer would see errors on the wire.
 | Checks passed | ___ / 24 |
 
 Notes (deviations, observations):
+
+## In-car stage
+
+Once the bench checks pass, repeat the key checks against the car's
+drivetrain bus (500 kbps, 29-bit IDs) — see the
+[in-car checklist](../README.md#in-car-checklist) in the firmware README:
+live 29-bit frames, sniff over BLE + Serial, ground/common-mode with the
+engine running (R10), and gear accuracy while driving. The termination
+jumper on the DUT MUST be disabled in the car (R10).
