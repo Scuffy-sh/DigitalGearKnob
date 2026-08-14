@@ -65,6 +65,17 @@ El cerebro y la pantalla en una sola placa. Esta placa LilyGO T-Display S3 ejecu
 
 Un IMU de 9 grados de libertad con un motor de fusión integrado. En lugar de fusionar los datos brutos de acelerómetro/giroscopio/magnetómetro en el MCU, el BNO085 produce internamente un rotation vector (cuaternión) filtrado, lo que resulta más preciso y más sencillo de usar. Está montado en la palanca de cambios para que su orientación refleje la posición de la palanca. El firmware lo lee por I2C a 100 kHz con el reporte de rotation vector habilitado a intervalos de 5 ms, mientras que el bucle de detección lo muestrea a 5 Hz (cada 200 ms) y aplica un control de estabilidad.
 
+#### Conexión
+
+El BNO085 se conecta mediante su conector Qwiic, cableado directamente a los pines del ESP32-S3:
+
+| BNO085 (Qwiic)   | ESP32-S3 | Función      |
+| ---------------- | -------- | ------------ |
+| **Cable rojo**   | **3.3V** | Alimentación |
+| **Cable negro**  | **GND**  | Masa         |
+| **Cable amarillo** | **SDA** | Datos        |
+| **Cable verde**  | **SCL**  | Reloj        |
+
 ### Pomo de cambios
 
 <img src="images/gear-knob.avif" width="400" alt="Pomo de cambios">

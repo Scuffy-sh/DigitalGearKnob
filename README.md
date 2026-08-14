@@ -65,6 +65,17 @@ The brain and the screen in one. This LilyGO T-Display S3 board runs the whole f
 
 A 9-DOF IMU with an on-board fusion engine. Instead of fusing raw accel/gyro/mag data on the MCU, the BNO085 produces a filtered rotation vector (quaternion) internally, which is both more accurate and simpler to use. It is mounted on the gear stick so its orientation mirrors the stick's position. The firmware reads it over I2C at 100 kHz with the rotation-vector report enabled at a 5 ms interval, while the detection loop samples it at 5 Hz (every 200 ms) and applies a stability check.
 
+#### Wiring
+
+The BNO085 is connected through its Qwiic connector, wired directly to the ESP32-S3 pins:
+
+| BNO085 (Qwiic) | ESP32-S3 | Function |
+| -------------- | -------- | -------- |
+| **Red wire**   | **3.3V** | Power    |
+| **Black wire** | **GND**  | Ground   |
+| **Yellow wire**| **SDA**  | Data     |
+| **Green wire** | **SCL**  | Clock    |
+
 ### Gear knob
 
 <img src="images/gear-knob.avif" width="400" alt="Gear knob">
