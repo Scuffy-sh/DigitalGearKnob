@@ -4,6 +4,7 @@
 // test_gearratio.cpp, test_vwsignals.cpp).
 void run_can_types_tests();
 void run_gearratio_tests();
+void run_vwsignals_tests();
 
 void setUp(void) {}
 void tearDown(void) {}
@@ -14,6 +15,7 @@ void setup()
 
     run_can_types_tests();
     run_gearratio_tests();
+    run_vwsignals_tests();
 
     UNITY_END();
 }
