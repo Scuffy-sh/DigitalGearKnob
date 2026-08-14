@@ -1,6 +1,7 @@
 #include <unity.h>
 
 #include "geardecode/can_types.h"
+#include "test_helpers.h"
 
 // =====================================================
 // Default Golf 6 config (starting values, unverified)
@@ -46,65 +47,49 @@ void test_golf6_default_config_valid()
 // GearRatioConfig::is_valid
 // =====================================================
 
-GearRatioConfig make_valid_ratio_config()
-{
-    GearRatioConfig cfg{};
-    cfg.ratio_rpm_per_kmh[GEAR_R] = 200.0f;
-    cfg.ratio_rpm_per_kmh[GEAR_1] = 160.0f;
-    cfg.ratio_rpm_per_kmh[GEAR_2] = 120.0f;
-    cfg.ratio_rpm_per_kmh[GEAR_3] = 90.0f;
-    cfg.ratio_rpm_per_kmh[GEAR_4] = 65.0f;
-    cfg.ratio_rpm_per_kmh[GEAR_5] = 45.0f;
-    cfg.ratio_rpm_per_kmh[GEAR_N] = 0.0f;
-    cfg.band_half_pct = 8.0f;
-    cfg.stale_ms = 500;
-    cfg.min_speed_kmh = 5.0f;
-    return cfg;
-}
-
 void test_valid_ratio_config_is_valid()
 {
-    TEST_ASSERT_TRUE(make_valid_ratio_config().is_valid());
+    TEST_ASSERT_TRUE(make_test_ratio_config().is_valid());
 }
 
 void test_zero_band_rejected()
 {
-    GearRatioConfig cfg = make_valid_ratio_config();
+    GearRatioConfig cfg = make_test_ratio_config();
     cfg.band_half_pct = 0.0f;
     TEST_ASSERT_FALSE(cfg.is_valid());
 }
 
 void test_oversized_band_rejected()
 {
-    GearRatioConfig cfg = make_valid_ratio_config();
+    GearRatioConfig cfg = make_test_ratio_config();
     cfg.band_half_pct = 60.0f;
     TEST_ASSERT_FALSE(cfg.is_valid());
 }
 
 void test_zero_stale_ms_rejected()
 {
-    GearRatioConfig cfg = make_valid_ratio_config();
+    GearRatioConfig cfg = make_test_ratio_config();
     cfg.stale_ms = 0;
     TEST_ASSERT_FALSE(cfg.is_valid());
 }
 
 void test_negative_min_speed_rejected()
 {
-    GearRatioConfig cfg = make_valid_ratio_config();
+    GearRatioConfig cfg = make_test_ratio_config();
     cfg.min_speed_kmh = -1.0f;
     TEST_ASSERT_FALSE(cfg.is_valid());
 }
 
 void test_zero_ratio_rejected()
 {
-    GearRatioConfig cfg = make_valid_ratio_config();
+    GearRatioConfig cfg = make_test_ratio_config();
     cfg.ratio_rpm_per_kmh[GEAR_3] = 0.0f;
     TEST_ASSERT_FALSE(cfg.is_valid());
 }
 
 void test_negative_ratio_rejected()
 {
-    GearRatioConfig cfg = make_valid_ratio_config();
+    GearRatioConfig cfg = make_test_ratio_config();
     cfg.ratio_rpm_per_kmh[GEAR_2] = -5.0f;
     TEST_ASSERT_FALSE(cfg.is_valid());
 }
