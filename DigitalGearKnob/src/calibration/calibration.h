@@ -5,35 +5,17 @@
 #include "geardecode/gear_types.h"
 
 //=====================================================
-// CALIBRACIÓN
+// CALIBRACIÓN (v2)
 //=====================================================
-
-struct GearCalibration
-{
-    float w;
-    float x;
-    float y;
-    float z;
-
-    bool valid;
-};
+// La calibración por cuaterniones NVS fue removida (design: calibration
+// removal). El gear ratio ahora viene de la tabla estática GearRatioConfig
+// (src/geardecode/can_types.h); los datos NVS heredados se ignoran.
+// Sobrevive únicamente la conversión de texto -> marcha (spec calibration:
+// enum y fromString sin cambios) porque el protocolo y los tests la usan.
 
 //=====================================================
 // API
 //=====================================================
-
-void calibration_init();
-
-void calibration_save(
-    GearPosition gear,
-    float w,
-    float x,
-    float y,
-    float z);
-
-GearCalibration calibration_get(GearPosition gear);
-
-bool calibration_is_valid(GearPosition gear);
 
 bool calibration_fromString(
     const char *text,
