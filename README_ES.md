@@ -2,7 +2,7 @@
 
 **Leer en inglés → [README.md](README.md)**
 
-He creado este indicador digital de marchas desde cero — hardware, firmware y app. Un ESP32-S3 montado en la palanca de cambios lee la marcha seleccionada directamente del bus CAN del coche — la red de transmisión de mi VW Golf 6 (2010, PQ35) — a través de un transceptor Waveshare SN65HVD230, y lo muestra en una pantalla AMOLED con una animación de arco realizada en LVGL. El mismo dispositivo expone un servicio Bluetooth Low Energy que una app complementaria en Flutter ("scuffy") utiliza para depuración en vivo, sniffer de CAN y personalización de tema.
+He creado este indicador digital de marchas desde cero — hardware, firmware y app. Un ESP32-S3 montado en la palanca de cambios lee la marcha seleccionada directamente del bus CAN del coche — la red de transmisión del coche — a través de un transceptor Waveshare SN65HVD230, y lo muestra en una pantalla AMOLED con una animación de arco realizada en LVGL. El mismo dispositivo expone un servicio Bluetooth Low Energy que una app complementaria en Flutter ("scuffy") utiliza para depuración en vivo, sniffer de CAN y personalización de tema.
 
 ## Características principales
 
@@ -37,9 +37,9 @@ He creado este indicador digital de marchas desde cero — hardware, firmware y 
           │ CAN_H / CAN_L (bus de transmisión)    │ BLE
           ▼                                       ▼
 ┌───────────────────────────┐            ┌────────────────────┐
-│ VW Golf 6 (2010, PQ35)    │            │  App Flutter        │
-│ bus CAN de transmisión    │            │  "scuffy"           │
-│ 500 kbps · IDs de 29 bits │            │  flutter_blue_plus  │
+│ El bus CAN del coche      │            │  App Flutter        │
+│ 500 kbps · IDs de 29 bits │            │  "scuffy"           │
+│ derivación (solo escucha) │            │  flutter_blue_plus  │
 └───────────────────────────┘            │  scan · connect ·   │
                                          │  sniff · debug ·    │
                                          │  tema               │
@@ -64,7 +64,7 @@ El cerebro y la pantalla en una sola placa. Esta placa LilyGO T-Display S3 ejecu
 
 **Tecnologías:** breakout Waveshare SN65HVD230 · transceptor CAN 2.0B · lógica de 3.3 V · terminación de 120 Ω integrada (jumper, deshabilitado para la conexión al vehículo)
 
-El puente entre el coche y el pomo. El CAN es un bus diferencial de dos hilos (CAN_H / CAN_L); el SN65HVD230 lo convierte a los niveles lógicos de 3.3 V que puede leer el controlador TWAI integrado del ESP32-S3. Se conecta al bus de transmisión del Golf 6 — la red que transporta las señales de RPM y velocidad de rueda que necesita la detección de marcha.
+El puente entre el coche y el pomo. El CAN es un bus diferencial de dos hilos (CAN_H / CAN_L); el SN65HVD230 lo convierte a los niveles lógicos de 3.3 V que puede leer el controlador TWAI integrado del ESP32-S3. Se conecta al bus de transmisión del coche — la red que transporta las señales de RPM y velocidad de rueda que necesita la detección de marcha.
 
 #### Conexión
 
@@ -80,6 +80,41 @@ El transceptor se conecta directamente a los pines del ESP32-S3:
 | **CANL**    | CAN_L de transmisión | Línea baja del bus      |
 
 > **Seguridad: solo escucha y terminación.** El firmware inicia TWAI en modo listen-only y no expone ningún camino de transmisión — el pomo jamás puede escribir en el bus del coche. El jumper de terminación de 120 Ω de la placa Waveshare debe estar **deshabilitado** para la conexión al vehículo: el bus de transmisión ya está terminado en ambos extremos, y un tercer 120 Ω en paralelo bajaría el bus a ~40 Ω y arriesgaría fallos de comunicación en todo el coche. (Las pruebas de banco sobre un mini-bus aislado pueden mantenerlo.)
+
+#### Selección del bus CAN
+
+Un coche puede llevar varios buses CAN independientes a distinta velocidad. En esta generación de VW la red se divide en tres:
+
+| Bus | Velocidad | Qué lleva | ¿Usarlo? |
+| --- | --- | --- | --- |
+| **Bus de transmisión** (Antriebs-CAN) | 500 kbps | Motor (RPM), ABS (velocidad de rueda), gateway | ✅ — conectar aquí |
+| **Komfort-CAN** | 100 kbps | Puertas, cierre centralizado, ventanillas | ❌ |
+| **Infotainment-CAN** | 100 kbps | Radio, navegación | ❌ |
+
+El bus de transmisión es el que transporta las señales de RPM y velocidad de rueda que necesita el estimador de relaciones. Conéctate a él **directamente** (p. ej. en el conector del motor o de la centralita ABS). El puerto de diagnóstico OBD-II (pines 6/14) puede estar en un bus de diagnóstico separado detrás de la gateway, donde las tramas se filtran o se re-mapean — es preferible el bus de transmisión físico.
+
+Colores de cable típicos en los pares de transmisión de VW (verifícalo con un multímetro):
+
+| Señal | Color típico |
+| --- | --- |
+| CAN-H (transmisión) | naranja/negro |
+| CAN-L (transmisión) | naranja/marrón |
+| CAN-H (confort) | naranja/violeta |
+| CAN-L (confort) | naranja/marrón |
+
+**Comprobación con multímetro:** ambos hilos reposan en ~2.5 V; el CAN-H sube a ~3.5 V y el CAN-L baja a ~1.5 V cuando hay tramas activas.
+
+> **El propio firmware confirma el par correcto.** Escucha a 500 kbps fijos, así que si te conectas al bus equivocado verás `can:no_frames` (o errores de bus) en la pantalla de sniff en lugar de tramas — un par incorrecto se hace evidente en lugar de desconcertante.
+
+#### Qué puede mostrar cada bus
+
+| Bus | Señales disponibles para la pantalla |
+| --- | --- |
+| **Bus de transmisión** (500 kbps) | RPM del motor · velocidad del vehículo · temperatura del refrigerante · nivel de combustible · tensión de la batería · odómetro/viaje · carga del motor · posición del acelerador · luz de marcha atrás · marcha engranada en cajas automáticas (Etapa 2, vía la ECU de la caja) |
+| **Komfort-CAN** (100 kbps) | Puertas abiertas/cerradas · cierre centralizado · posición de ventanillas · estado de luces · estado de llave/encendido |
+| **Infotainment-CAN** (100 kbps) | Metadatos de media (tema/emisora) · volumen · datos de navegación |
+
+El bus de transmisión es el interesante para un pomo de marchas: además de la marcha en sí, lleva todas las señales de motor y chasis que caben en la AMOLED.
 
 ### Pomo de cambios
 
@@ -116,7 +151,7 @@ La app cliente BLE complementaria. Escanea el dispositivo (anunciado como `SCUFF
 
 Como la marcha se estima a partir de la relación RPM ÷ velocidad, el indicador funciona sin ningún sensor en la palanca — y sin las limitaciones de v1: sin calibración, sin compensación de pendientes y sin deriva de ángulo de montaje. Los casos límite restantes (punto muerto, embrague, patinaje) los cubren las reglas de N descritas arriba, y la marcha atrás vs. la 1ª está cerca en esta caja de cambios (ver [Tabla de relaciones de marchas](#tabla-de-relaciones-de-marchas)).
 
-El layout de tramas del bus de transmisión del Golf 6 se confirma en el banco y en el coche con el **modo sniff**: enviando `sniff:on` por BLE (o escribiéndolo en Serial) el pomo vuelca tramas como `sniff:<E|S><id-hex-8-digitos>:<payload-hex>` en ambos canales, limitadas a 20 líneas por segundo; `sniff:off` detiene el volcado. Si no llegan tramas durante 2 segundos con el sniff activo, el pomo notifica `can:no_frames` — un bus silencioso (bitrate incorrecto, CANH/CANL invertidos o un empalme defectuoso) se hace evidente en lugar de desconcertante. La conexión tiene una regla de seguridad dedicada: el controlador solo escucha y el jumper de terminación permanece deshabilitado (ver la [sección de conexión](#transceptor-can-sn65hvd230)).
+El layout de tramas del bus de transmisión del coche se confirma en el banco y en el coche con el **modo sniff**: enviando `sniff:on` por BLE (o escribiéndolo en Serial) el pomo vuelca tramas como `sniff:<E|S><id-hex-8-digitos>:<payload-hex>` en ambos canales, limitadas a 20 líneas por segundo; `sniff:off` detiene el volcado. Si no llegan tramas durante 2 segundos con el sniff activo, el pomo notifica `can:no_frames` — un bus silencioso (bitrate incorrecto, CANH/CANL invertidos o un empalme defectuoso) se hace evidente en lugar de desconcertante. La conexión tiene una regla de seguridad dedicada: el controlador solo escucha y el jumper de terminación permanece deshabilitado (ver la [sección de conexión](#transceptor-can-sn65hvd230)).
 
 ## Stack tecnológico
 
@@ -169,7 +204,7 @@ ChatGPT/
 
 ## Tabla de relaciones de marchas
 
-El estimador compara la relación RPM ÷ velocidad de rueda contra una tabla por marcha en `VehicleCanConfig` — el único punto de datos específico del vehículo. Los valores por defecto provienen de las relaciones publicadas de la caja MQ250-5F del Golf 6, escaladas por el diferencial final y las revoluciones de rueda por km para 205/55 R16 (~503.7 rev/km):
+El estimador compara la relación RPM ÷ velocidad de rueda contra una tabla por marcha en `VehicleCanConfig` — el único punto de datos específico del vehículo. Los valores por defecto provienen de las relaciones publicadas de la caja del coche, escaladas por el diferencial final y las revoluciones de rueda por km para sus neumáticos (~503.7 rev/km):
 
 | Marcha | Relación (RPM por km/h) |
 | --- | --- |
@@ -187,7 +222,7 @@ Cada banda es el valor central ±8%, con un tiempo de caducidad de 500 ms y una 
 El camino del CAN se verifica manualmente — requiere hardware real, por lo que nunca es una puerta de CI:
 
 - **Banco** — la [checklist de banco CAN escucha y sniff](DigitalGearKnob/docs/bench-checklist.md): 24 comprobaciones sobre un mini-bus aislado de 500 kbps (prueba de solo escucha, flujo de tramas y límite de frecuencia, desbordamiento y recuperación, fallo seguro ante bitrate incorrecto o cables invertidos, strapping de arranque).
-- **En el coche** — la checklist para el coche en el [README del firmware](DigitalGearKnob/README.md#verificación): tramas de 29 bits en vivo en el bus del Golf 6, sniff por BLE y Serial, masa/common-mode con el motor en marcha y precisión de la marcha al conducir.
+- **En el coche** — la checklist para el coche en el [README del firmware](DigitalGearKnob/README.md#verificación): tramas de 29 bits en vivo en el bus del coche, sniff por BLE y Serial, masa/common-mode con el motor en marcha y precisión de la marcha al conducir.
 
 ## Mejoras en el futuro
 

@@ -32,6 +32,28 @@ Firmware for a digital gear indicator knob built with an ESP32 (LilyGo T-Display
 
 > **Termination jumper.** The onboard 120 Ω termination of the Waveshare board must be **disabled** when tapping the car's bus — a third 120 Ω in parallel drops the bus to ~40 Ω and risks car-wide communication faults. Bench tests on an isolated mini-bus may keep it. The SN65HVD230 is 3.3 V logic; GPIO 3 must not be pulled high at boot (bench checklist 5.3).
 
+### CAN bus selection
+
+A car can carry several independent CAN buses at different bitrates. On this VW generation:
+
+| Bus | Bitrate | Carries | Use it? |
+|-----|---------|---------|---------|
+| **Drivetrain CAN** (Antriebs-CAN) | 500 kbps | Engine (RPM), ABS (wheel speed), gateway | ✅ — tap here |
+| **Comfort CAN** (Komfort-CAN) | 100 kbps | Doors, central locking, windows | ❌ |
+| **Infotainment CAN** | 100 kbps | Radio, navigation | ❌ |
+
+Tap the drivetrain bus **directly** (e.g. engine ECU or ABS connectors). The OBD-II port (pins 6/14) may sit on a separate diagnostic bus behind the gateway where frames are filtered or re-mapped. Typical VW wire colours — verify with a multimeter: CAN-H orange/black, CAN-L orange/brown (drivetrain); comfort is orange/violet + orange/brown. Both lines sit at ~2.5 V at rest; CAN-H rises to ~3.5 V and CAN-L drops to ~1.5 V while frames are active.
+
+> **The firmware confirms the right pair.** It listens at a fixed 500 kbps, so tapping the wrong bus shows `can:no_frames` (or bus errors) on the sniff screen instead of frames.
+
+What you can display per bus:
+
+| Bus | Signals available for the display |
+|-----|-----------------------------------|
+| **Drivetrain CAN** (500 kbps) | Engine RPM · vehicle speed · coolant · fuel level · battery voltage · odometer · engine load · throttle · reverse light · gear on automatics (Stage 2) |
+| **Comfort CAN** (100 kbps) | Doors · central locking · windows · lights · key state |
+| **Infotainment CAN** (100 kbps) | Media metadata · volume · navigation |
+
 ## Building
 
 Requires [PlatformIO](https://platformio.org/).
@@ -77,7 +99,7 @@ Removed in v2: `calibrate:X`, `stream:on/off`, `quat:...`, `calibration_ok`, `ca
 The CAN path is verified manually — it needs real hardware, so it is never a CI gate. Two stages:
 
 1. **Bench** — [CAN listen & sniff bench checklist](docs/bench-checklist.md): 24 checks on an isolated 500 kbps mini-bus (listen-only proof, frame flow and rate cap, overflow and recovery, safe-fail, boot strapping).
-2. **In-car** — the checklist below, on the Golf 6 drivetrain bus.
+2. **In-car** — the checklist below, on the car's drivetrain bus.
 
 ### In-car checklist
 
