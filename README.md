@@ -2,7 +2,7 @@
 
 **Read this in Spanish → [README_ES.md](README_ES.md)**
 
-I created this digital gear indicator from scratch — hardware, firmware, and app. An ESP32-S3 mounted on the gear stick reads the selected gear straight from the car's own CAN bus — the drivetrain network of my VW Golf 6 (2010, PQ35) — through a Waveshare SN65HVD230 transceiver, and shows it on an AMOLED display with an LVGL animated arc. The same device exposes a Bluetooth Low Energy service that a Flutter companion app ("scuffy") uses for live debugging, CAN sniffing, and theming.
+I created this digital gear indicator from scratch — hardware, firmware, and app. An ESP32-S3 mounted on the gear stick reads the selected gear straight from the car's own CAN bus — the drivetrain network of the car — through a Waveshare SN65HVD230 transceiver, and shows it on an AMOLED display with an LVGL animated arc. The same device exposes a Bluetooth Low Energy service that a Flutter companion app ("scuffy") uses for live debugging, CAN sniffing, and theming.
 
 ## Key Features
 
@@ -37,9 +37,9 @@ I created this digital gear indicator from scratch — hardware, firmware, and a
           │ CAN_H / CAN_L (drivetrain bus)        │ BLE
           ▼                                       ▼
 ┌───────────────────────────┐            ┌────────────────────┐
-│ VW Golf 6 (2010, PQ35)    │            │  Flutter app        │
-│ drivetrain CAN · 500 kbps │            │  "scuffy"           │
-│ 29-bit IDs · tapped       │            │  flutter_blue_plus  │
+│ The car's drivetrain CAN  │            │  Flutter app        │
+│ 500 kbps · 29-bit IDs     │            │  "scuffy"           │
+│ tapped (listen-only)      │            │  flutter_blue_plus  │
 └───────────────────────────┘            │  scan · connect ·   │
                                          │  sniff · debug ·    │
                                          │  theme              │
@@ -64,7 +64,7 @@ The brain and the screen in one. This LilyGO T-Display S3 board runs the whole f
 
 **Technologies:** Waveshare SN65HVD230 breakout · CAN 2.0B transceiver · 3.3 V logic · onboard 120 Ω termination (jumper, disabled for the vehicle tap)
 
-The bridge between the car and the knob. CAN is a differential two-wire bus (CAN_H / CAN_L); the SN65HVD230 converts it to the 3.3 V logic levels that the ESP32-S3's built-in TWAI controller can read. It connects to the Golf 6 drivetrain bus — the network that carries the RPM and wheel-speed signals the gear detection needs.
+The bridge between the car and the knob. CAN is a differential two-wire bus (CAN_H / CAN_L); the SN65HVD230 converts it to the 3.3 V logic levels that the ESP32-S3's built-in TWAI controller can read. It connects to the car's drivetrain bus — the network that carries the RPM and wheel-speed signals the gear detection needs.
 
 #### Wiring
 
@@ -80,6 +80,41 @@ The transceiver is wired directly to the ESP32-S3 pins:
 | **CANL**   | Drivetrain CAN_L | Bus low |
 
 > **Safety: listen-only and termination.** The firmware starts TWAI in listen-only mode and exposes no transmit path — the knob can never write to the car's bus. The onboard 120 Ω termination jumper of the Waveshare board must be **disabled** for the in-car tap: the drivetrain bus is already terminated at both ends, and a third 120 Ω in parallel would drop the bus to ~40 Ω and risk communication faults across the car. (Bench tests on an isolated mini-bus may keep it.)
+
+#### CAN bus selection
+
+A car can carry several independent CAN buses running at different bitrates. On this VW generation the network splits into three:
+
+| Bus | Bitrate | Carries | Use it? |
+| --- | --- | --- | --- |
+| **Drivetrain CAN** (Antriebs-CAN) | 500 kbps | Engine (RPM), ABS (wheel speed), gateway | ✅ — tap here |
+| **Comfort CAN** (Komfort-CAN) | 100 kbps | Doors, central locking, windows | ❌ |
+| **Infotainment CAN** | 100 kbps | Radio, navigation | ❌ |
+
+The drivetrain bus is the one carrying the RPM and wheel-speed signals the ratio estimator needs. Tap it **directly** (e.g. at the engine ECU or ABS connectors). The OBD-II diagnostic port (pins 6/14) may sit on a separate diagnostic bus behind the gateway, where frames are filtered or re-mapped — prefer the physical drivetrain bus.
+
+Typical wire colours on VW drivetrain pairs (verify with a multimeter):
+
+| Signal | Typical colour |
+| --- | --- |
+| CAN-H (drivetrain) | orange/black |
+| CAN-L (drivetrain) | orange/brown |
+| CAN-H (comfort) | orange/violet |
+| CAN-L (comfort) | orange/brown |
+
+**Multimeter check:** both lines sit at ~2.5 V at rest; CAN-H rises to ~3.5 V and CAN-L drops to ~1.5 V while frames are active.
+
+> **The firmware itself confirms the right pair.** It listens at a fixed 500 kbps, so tapping the wrong bus shows `can:no_frames` (or bus errors) on the sniff screen instead of frames — a wrong pair is obvious, not confusing.
+
+#### What each bus can show
+
+| Bus | Signals available for the display |
+| --- | --- |
+| **Drivetrain CAN** (500 kbps) | Engine RPM · vehicle speed · coolant temperature · fuel level · battery voltage · odometer/trip · engine load · throttle position · reverse light · engaged gear on automatic gearboxes (Stage 2, via the transmission ECU) |
+| **Comfort CAN** (100 kbps) | Door open/closed · central locking · window positions · light status · ignition/key state |
+| **Infotainment CAN** (100 kbps) | Media metadata (track/station) · volume · navigation data |
+
+The drivetrain bus is the interesting one for a gear knob: besides the gear itself, it carries every engine and chassis signal that fits on the small AMOLED.
 
 ### Gear knob
 
@@ -116,7 +151,7 @@ The BLE client companion app. It scans for the device (advertised as `SCUFFY`), 
 
 Because the gear is estimated from the RPM ÷ speed ratio, the indicator works without any sensor on the stick — and without the v1 limitations: no calibration, no slope compensation, and no mounting-angle drift. The remaining edge cases (neutral, clutch, wheel slip) are handled by the N rules above, and reverse vs. 1st gear is close on this gearbox (see [Gear ratio table](#gear-ratio-table)).
 
-The frame layout of the Golf 6 drivetrain bus is confirmed on the bench and in the car with the **sniff mode**: sending `sniff:on` over BLE (or typing it on Serial) makes the knob dump frames as `sniff:<E|S><8-hex-id>:<payload-hex>` on both channels, rate-limited to 20 lines per second; `sniff:off` stops the dump. If no frames arrive while sniffing for 2 seconds, the knob reports `can:no_frames` — a silent bus (wrong bitrate, swapped CANH/CANL, or a bad tap) is obvious instead of puzzling. There is a dedicated safety rule for the tap: the controller only listens and the termination jumper stays disabled (see the [wiring section](#sn65hvd230-can-transceiver)).
+The frame layout of the car's drivetrain bus is confirmed on the bench and in the car with the **sniff mode**: sending `sniff:on` over BLE (or typing it on Serial) makes the knob dump frames as `sniff:<E|S><8-hex-id>:<payload-hex>` on both channels, rate-limited to 20 lines per second; `sniff:off` stops the dump. If no frames arrive while sniffing for 2 seconds, the knob reports `can:no_frames` — a silent bus (wrong bitrate, swapped CANH/CANL, or a bad tap) is obvious instead of puzzling. There is a dedicated safety rule for the tap: the controller only listens and the termination jumper stays disabled (see the [wiring section](#sn65hvd230-can-transceiver)).
 
 ## Tech Stack
 
@@ -169,7 +204,7 @@ ChatGPT/
 
 ## Gear Ratio Table
 
-The estimator matches the RPM ÷ wheel-speed ratio against a per-gear table in `VehicleCanConfig` — the single vehicle-specific data point. The defaults come from the published MQ250-5F gearbox ratios of the Golf 6, scaled by the final drive and the wheel revs/km for 205/55 R16 (~503.7 revs/km):
+The estimator matches the RPM ÷ wheel-speed ratio against a per-gear table in `VehicleCanConfig` — the single vehicle-specific data point. The defaults come from the published ratios of the car's gearbox, scaled by the final drive and the wheel revs/km for its tyres (~503.7 revs/km):
 
 | Gear | Ratio (RPM per km/h) |
 | --- | --- |
@@ -187,7 +222,7 @@ Each band is the center value ±8%, with a 500 ms stale timeout and a 5 km/h min
 The CAN path is verified manually — it needs real hardware, so it is never a CI gate:
 
 - **Bench** — the [CAN listen & sniff bench checklist](DigitalGearKnob/docs/bench-checklist.md): 24 checks on an isolated 500 kbps mini-bus (listen-only proof, frame flow and rate cap, overflow and recovery, safe-fail on wrong bitrate or swapped wires, boot strapping).
-- **In-car** — the in-car checklist in the [firmware README](DigitalGearKnob/README.md#verification): live 29-bit frames on the Golf 6 bus, sniff over BLE and Serial, ground/common-mode with the engine running, and gear accuracy while driving.
+- **In-car** — the in-car checklist in the [firmware README](DigitalGearKnob/README.md#verification): live 29-bit frames on the car's bus, sniff over BLE and Serial, ground/common-mode with the engine running, and gear accuracy while driving.
 
 ## Future Improvements
 
