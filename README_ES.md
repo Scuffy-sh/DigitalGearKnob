@@ -2,16 +2,16 @@
 
 **Leer en inglés → [README.md](README.md)**
 
-He creado este indicador digital de marchas desde cero — hardware, firmware y app. Un ESP32-S3 montado en la palanca de cambios lee la orientación 3D de la palanca mediante un IMU BNO085, detecta cuál de las siete posiciones (R, 1–5, N) ha seleccionado el conductor y lo muestra en una pantalla AMOLED con una animación de arco realizada en LVGL. El mismo dispositivo expone un servicio Bluetooth Low Energy que una app complementaria en Flutter ("scuffy") utiliza para depuración en vivo, personalización de tema y calibración.
+He creado este indicador digital de marchas desde cero — hardware, firmware y app. Un ESP32-S3 montado en la palanca de cambios lee la marcha seleccionada directamente del bus CAN del coche — la red de transmisión de mi VW Golf 6 (2010, PQ35) — a través de un transceptor Waveshare SN65HVD230, y lo muestra en una pantalla AMOLED con una animación de arco realizada en LVGL. El mismo dispositivo expone un servicio Bluetooth Low Energy que una app complementaria en Flutter ("scuffy") utiliza para depuración en vivo, sniffer de CAN y personalización de tema.
 
 ## Características principales
 
-- **Detección del patrón H de 7 marchas** (R, 1–5, N) con un único IMU de 9 grados de libertad montado en la palanca.
+- **Detección de las 7 marchas** (R, 1–5, N) leída directamente del bus CAN de transmisión del coche — sin sensor en la palanca y sin calibración.
 - **Pantalla AMOLED con animación de arco en LVGL** — la marcha seleccionada se muestra con una animación de "carga" de 2 segundos en lugar de un cambio brusco de valor.
-- **Conectividad BLE con una app Flutter** — la app puede conectarse, recibir datos en streaming, cambiar el color de acento y ejecutar la calibración por marcha.
-- **Modo de depuración BLE en vivo** — enviando `debug:on` el dispositivo notifica `debug:ROLL,PITCH,GEAR` en cada ciclo de detección, lo que permite ajustar los umbrales en tiempo real.
-- **Recaptura automática de la referencia neutral para compensar pendientes** — si la palanca permanece cerca del punto muerto, el cuaternión de referencia se vuelve a capturar, re-centrando todo el sistema de coordenadas cuando cambia la pendiente del coche.
-- **Calibración de neutral al arrancar** — la referencia neutral se captura con la primera lectura válida del sensor tras el arranque, sin necesidad de configuración manual.
+- **Conectividad BLE con una app Flutter** — la app muestra el estado del CAN y la marcha actual, cambia el color de acento y activa/desactiva el modo sniff.
+- **Modo de depuración BLE en vivo** — enviando `debug:on` el dispositivo notifica `debug:<GEAR>,<RPM>,<SPEED>,<CANSTAT>` en cada ciclo de detección.
+- **Modo sniff CAN para ingeniería inversa** — `sniff:on` vuelca tramas limitadas en frecuencia (ID + payload) por BLE y Serial, de modo que el layout de las tramas pueda confirmarse antes de configurarlo.
+- **Solo escucha por diseño** — el controlador TWAI está fijado en modo listen-only sin ningún camino de transmisión; un nodo que solo escucha jamás puede perturbar el bus del vehículo.
 
 ## Visión general de la arquitectura
 
@@ -20,32 +20,33 @@ He creado este indicador digital de marchas desde cero — hardware, firmware y 
 │                    ESP32-S3 · T-Display S3                     │
 │                    C++ / Arduino / PlatformIO                  │
 │                                                                │
-│  ┌──────────┐   I2C (100 kHz)   ┌─────────────┐                │
-│  │  BNO085  │ ─────────────────▶│  gears      │                │
-│  │  IMU     │   rotation vector │  (detection │                │
-│  └──────────┘   SH2_RV @ 200 Hz │   + zones)  │                │
-│                                  └──────┬──────┘               │
-│                                         │ LVGL 8.3.11          │
-│                                         ▼                      │
-│                                  ┌──────────────┐              │
-│                                  │ 1.43" AMOLED │              │
-│                                  │ arc + gear   │              │
-│                                  └──────────────┘              │
-│                                         │                      │
-│                                    NimBLE "SCUFFY"             │
-└────────────────────────────────────────┬───────────────────────┘
-                                         │ BLE
-                                         ▼
-                               ┌────────────────────┐
-                               │  Flutter app        │
-                               │  "scuffy"           │
-                               │  flutter_blue_plus  │
-                               │  scan · connect ·   │
-                               │  debug · calibrate  │
-                               └────────────────────┘
+│  ┌──────────────┐   TWAI · listen-only  ┌─────────────┐        │
+│  │ SN65HVD230   │ ─────────────────────▶│  gears      │        │
+│  │ CAN trans-   │   500 kbps · GPIO 3/5 │  (ratio     │        │
+│  │ ceiver       │   RX only             │  estimator) │        │
+│  └──────▲───────┘                       └──────┬──────┘        │
+│         │                                      │ LVGL 8.3.11   │
+│         │                                      ▼               │
+│         │                               ┌──────────────┐       │
+│         │                               │ 1.43" AMOLED │       │
+│         │                               │ arc + marcha │       │
+│         │                               └──────────────┘       │
+│         │                                      │               │
+│         │                                 NimBLE "SCUFFY"      │
+└─────────┼───────────────────────────────────────┬──────────────┘
+          │ CAN_H / CAN_L (bus de transmisión)    │ BLE
+          ▼                                       ▼
+┌───────────────────────────┐            ┌────────────────────┐
+│ VW Golf 6 (2010, PQ35)    │            │  App Flutter        │
+│ bus CAN de transmisión    │            │  "scuffy"           │
+│ 500 kbps · IDs de 29 bits │            │  flutter_blue_plus  │
+└───────────────────────────┘            │  scan · connect ·   │
+                                         │  sniff · debug ·    │
+                                         │  tema               │
+                                         └────────────────────┘
 ```
 
-En la placa convergen dos flujos de datos: el cuaternión del sensor llega por I2C, la lógica de detección lo convierte en marcha y se renderiza en la AMOLED mediante LVGL; en paralelo, la misma placa ejecuta un servidor GATT NimBLE para que la app del teléfono pueda observar y configurar el dispositivo.
+En la placa convergen dos flujos de datos: las tramas del bus CAN de transmisión del vehículo llegan a través del transceptor SN65HVD230, la lógica de detección las convierte en marcha mediante el estimador de relaciones y se renderiza en la AMOLED mediante LVGL; en paralelo, la misma placa ejecuta un servidor GATT NimBLE para que la app del teléfono pueda observar, hacer sniff y configurar el dispositivo.
 
 ## Componentes
 
@@ -55,38 +56,42 @@ En la placa convergen dos flujos de datos: el cuaternión del sensor llega por I
 
 **Tecnologías:** ESP32-S3 (doble núcleo, 240 MHz) · Wi-Fi/BLE · AMOLED de 1.43" · QSPI · LVGL 8.3.11
 
-El cerebro y la pantalla en una sola placa. Esta placa LilyGO T-Display S3 ejecuta todo el firmware — manejo de la fusión del BNO085, detección de marcha, renderizado LVGL y el servidor BLE — y su AMOLED de 1.43" muestra la marcha actual con el arco animado de carga. El firmware también soporta otras pantallas AMOLED de la misma familia de placas; el panel activo se selecciona con un `define` en `include/pin_config.h`.
+El cerebro y la pantalla en una sola placa. Esta placa LilyGO T-Display S3 ejecuta todo el firmware — recepción y decodificación del CAN, detección de marcha, renderizado LVGL y el servidor BLE — y su AMOLED de 1.43" muestra la marcha actual con el arco animado de carga. El firmware también soporta otras pantallas AMOLED de la misma familia de placas; el panel activo se selecciona con un `define` en `include/pin_config.h`.
 
-### IMU BNO085 de 9 grados de libertad
+### Transceptor CAN SN65HVD230
 
-<img src="images/bno085-imu.jpg" width="400" alt="IMU BNO085">
+<img src="images/sn65hvd230-can.jpg" width="400" alt="Transceptor CAN Waveshare SN65HVD230">
 
-**Tecnologías:** breakout Adafruit BNO085 · acelerómetro + giroscopio + magnetómetro · fusión de sensores integrada (rotation vector) · I2C/SPI · conector STEMMA QT / Qwiic
+**Tecnologías:** breakout Waveshare SN65HVD230 · transceptor CAN 2.0B · lógica de 3.3 V · terminación de 120 Ω integrada (jumper, deshabilitado para la conexión al vehículo)
 
-Un IMU de 9 grados de libertad con un motor de fusión integrado. En lugar de fusionar los datos brutos de acelerómetro/giroscopio/magnetómetro en el MCU, el BNO085 produce internamente un rotation vector (cuaternión) filtrado, lo que resulta más preciso y más sencillo de usar. Está montado en la palanca de cambios para que su orientación refleje la posición de la palanca. El firmware lo lee por I2C a 100 kHz con el reporte de rotation vector habilitado a intervalos de 5 ms, mientras que el bucle de detección lo muestrea a 5 Hz (cada 200 ms) y aplica un control de estabilidad.
+El puente entre el coche y el pomo. El CAN es un bus diferencial de dos hilos (CAN_H / CAN_L); el SN65HVD230 lo convierte a los niveles lógicos de 3.3 V que puede leer el controlador TWAI integrado del ESP32-S3. Se conecta al bus de transmisión del Golf 6 — la red que transporta las señales de RPM y velocidad de rueda que necesita la detección de marcha.
 
 #### Conexión
 
-El BNO085 se conecta mediante su conector Qwiic, cableado directamente a los pines del ESP32-S3:
+El transceptor se conecta directamente a los pines del ESP32-S3:
 
-| BNO085 (Qwiic)   | ESP32-S3 | Función      |
-| ---------------- | -------- | ------------ |
-| **Cable rojo**   | **3.3V** | Alimentación |
-| **Cable negro**  | **GND**  | Masa         |
-| **Cable amarillo** | **SDA** | Datos        |
-| **Cable verde**  | **SCL**  | Reloj        |
+| SN65HVD230  | ESP32-S3    | Función                        |
+| ----------- | ----------- | ------------------------------ |
+| **VCC**     | **3.3V**    | Alimentación                   |
+| **GND**     | **GND**     | Masa                           |
+| **TXD**     | **GPIO 3**  | TWAI TX (nunca se activa — solo escucha) |
+| **RXD**     | **GPIO 5**  | TWAI RX                        |
+| **CANH**    | CAN_H de transmisión | Línea alta del bus      |
+| **CANL**    | CAN_L de transmisión | Línea baja del bus      |
+
+> **Seguridad: solo escucha y terminación.** El firmware inicia TWAI en modo listen-only y no expone ningún camino de transmisión — el pomo jamás puede escribir en el bus del coche. El jumper de terminación de 120 Ω de la placa Waveshare debe estar **deshabilitado** para la conexión al vehículo: el bus de transmisión ya está terminado en ambos extremos, y un tercer 120 Ω en paralelo bajaría el bus a ~40 Ω y arriesgaría fallos de comunicación en todo el coche. (Las pruebas de banco sobre un mini-bus aislado pueden mantenerlo.)
 
 ### Pomo de cambios
 
 <img src="images/gear-knob.avif" width="400" alt="Pomo de cambios">
 
-El pomo físico que sustituye al original. El IMU va embebido en el interior del pomo, que constituye la integración mecánica de todo el proyecto en el coche: la alimentación y la electrónica viven dentro del pomo, y la pantalla queda orientada hacia el conductor.
+El pomo físico que sustituye al original. La electrónica va embebida en el interior del pomo — la placa ESP32-S3 con la pantalla y el pequeño transceptor CAN que se conecta al bus de transmisión del coche — que constituye la integración mecánica de todo el proyecto en el coche: la alimentación y la electrónica viven dentro del pomo, y la pantalla queda orientada hacia el conductor.
 
 #### Ensamblaje
 
-La vista abierta muestra el BNO085 y el ESP32-S3 conectados dentro del pomo antes de pegarlos; el producto final mantiene la pantalla orientada hacia el conductor, mostrando la marcha actual cuando está encendido.
+La vista abierta muestra el ESP32-S3 conectado dentro del pomo antes de pegar la electrónica (la foto es anterior al transceptor CAN de v2). El producto final mantiene la pantalla orientada hacia el conductor, mostrando la marcha actual cuando está encendido.
 
-<img src="images/knob-open.jpeg" width="280" alt="Pomo abierto: BNO085 y ESP32-S3 conectados dentro"> <img src="images/knob-final-off.jpeg" width="280" alt="Pomo final, pantalla apagada"> <img src="images/knob-final-on.jpeg" width="280" alt="Pomo final, pantalla encendida">
+<img src="images/knob-open.jpeg" width="280" alt="Pomo abierto: ESP32-S3 conectado dentro (build de v1)"> <img src="images/knob-final-off.jpeg" width="280" alt="Pomo final, pantalla apagada"> <img src="images/knob-final-on.jpeg" width="280" alt="Pomo final, pantalla encendida">
 
 ### App Flutter (scuffy)
 
@@ -94,28 +99,24 @@ La vista abierta muestra el BNO085 y el ESP32-S3 conectados dentro del pomo ante
 
 **Tecnologías:** Flutter · Dart · flutter_blue_plus · permission_handler · shared_preferences
 
-La app cliente BLE complementaria. Escanea el dispositivo (anunciado como `SCUFFY`), se conecta a la característica de comandos y muestra los valores de depuración en vivo (roll, pitch y marcha detectada) en un panel cuando el toggle de DEBUG está activado. También permite cambiar el color de acento de la pantalla y ejecutar la calibración por marcha desde el teléfono.
+La app cliente BLE complementaria. Escanea el dispositivo (anunciado como `SCUFFY`), se conecta a la característica de comandos y muestra el estado del CAN y la marcha actual, con los valores de depuración (marcha, RPM, velocidad y estado del CAN) en un panel cuando el toggle de DEBUG está activado. También tiene una vista de sniff que vuelca tramas CAN en bruto para ingeniería inversa, y permite cambiar el color de acento de la pantalla. La calibración por marcha desapareció en v2 — la marcha ahora llega del propio coche.
 
 ## Cómo funciona
 
 ### Algoritmo de detección
 
-1. **Captura de la referencia neutral.** Con la primera lectura válida del sensor tras el arranque (la palanca está en N en ese momento), el cuaternión bruto se almacena como `q_neutral`.
-2. **Cálculo de la rotación relativa.** Cada nueva muestra se expresa en relación con la neutral: `q_rel = conj(q_neutral) * q_current`. Esto elimina la orientación absoluta de montaje y deja únicamente el movimiento de la palanca.
-3. **Extracción de ángulos de inclinación.** `q_rel` se descompone en dos ángulos en grados: **pitch** (inclinación adelante/atrás) y **roll** (inclinación izquierda/derecha). Esto separa las columnas y filas del patrón H.
-4. **Mapeo a zonas 2D.** El patrón H se divide según el pitch: las marchas delanteras tienen `pitch < 0`, y la marcha atrás y las pares tienen `pitch > 0`. El roll separa entonces R / 1 / 3 / 5 en la fila delantera y 4 / 2 en la fila trasera. El punto muerto es una pequeña zona muerta alrededor del centro.
-5. **Anti-rebote con contador de estabilidad.** Un cambio de marcha solo se acepta tras **3 detecciones idénticas consecutivas** (la detección se ejecuta cada 200 ms), lo que descarta lecturas transitorias mientras la palanca está a medio camino.
-6. **Animación del arco.** Al aceptarse, se reproduce una animación de arco LVGL de 2 segundos con easing hacia el valor objetivo, mientras la etiqueta muestra la marcha destino durante todo el proceso — nunca cuenta marchas intermedias al bajar (sin el parpadeo N-5-4-3-2-1).
+1. **Escuchar el bus de transmisión.** El SN65HVD230 convierte el bus CAN diferencial a lógica de 3.3 V; el controlador TWAI integrado del ESP32-S3 recibe las tramas en modo listen-only a 500 kbps (GPIO 3 TX / GPIO 5 RX).
+2. **Extraer RPM y velocidad de rueda.** El firmware decodifica las dos señales desde sus tramas CAN mediante un layout configurable — los IDs de trama y las posiciones de bit viven en `VehicleCanConfig` y se confirman con el modo sniff antes de entrar en producción.
+3. **Calcular la relación.** En cada ciclo de detección se calcula la relación actual `RPM ÷ velocidad`.
+4. **Comparar contra la tabla de relaciones de la caja.** Cada marcha tiene una banda de relación; el estimador compara la relación en vivo con la banda más cercana aplicando **histéresis** en los bordes, de modo que la pantalla no parpadee alrededor de un límite de cambio.
+5. **Aplicar las reglas de punto muerto, detención y embrague.** Por debajo de una velocidad mínima el resultado es N; si la relación no cae en ninguna banda (punto muerto, embrague pisado, patinaje de rueda) el resultado es N; si las tramas dejan de llegar durante 500 ms el resultado es N — una marcha obsoleta nunca se muestra.
+6. **Anti-rebote y animación del arco.** Un cambio de marcha solo se acepta tras **3 detecciones idénticas consecutivas** (la detección se ejecuta cada 200 ms), lo que descarta lecturas transitorias mientras la palanca está a medio camino. Al aceptarse, se reproduce una animación de arco LVGL de 2 segundos con easing hacia el valor objetivo, mientras la etiqueta muestra la marcha destino durante todo el proceso — nunca cuenta marchas intermedias al bajar (sin el parpadeo N-5-4-3-2-1).
 
-### Recaptura automática de neutral (compensación de pendientes)
+### Lectura del bus CAN y modo sniff
 
-El BNO085 mide la orientación absoluta contra la gravedad. Si la pendiente del coche cambia, la referencia neutral capturada al arrancar ya no coincide con la posición real de la palanca y todas las marchas se leen mal.
+Como la marcha se estima a partir de la relación RPM ÷ velocidad, el indicador funciona sin ningún sensor en la palanca — y sin las limitaciones de v1: sin calibración, sin compensación de pendientes y sin deriva de ángulo de montaje. Los casos límite restantes (punto muerto, embrague, patinaje) los cubren las reglas de N descritas arriba, y la marcha atrás vs. la 1ª está cerca en esta caja de cambios (ver [Tabla de relaciones de marchas](#tabla-de-relaciones-de-marchas)).
 
-La solución es volver a capturar la referencia en tiempo de ejecución: cuando la palanca permanece **dentro de ±8° del punto muerto durante ~1 s**, el firmware recaptura `q_neutral` como la media normalizada de las muestras tomadas en esa ventana. Como las zonas se definen como desplazamientos relativos a N, re-centrar N re-centra todo el sistema.
-
-Existe una **puerta de seguridad crítica**: la recaptura solo se activa cuando la marcha *detectada* es N o ambigua. Sin ella, la 5ª marcha (pitch −9.2°) entraría en la ventana de ±8° con una pendiente modesta y corrompería la referencia neutral mientras se conduce.
-
-**Limitación conocida.** Con un único IMU en la palanca, los desniveles sostenidos de más de ~3° no pueden distinguirse por completo de una posición real de marcha — una pendiente de esa magnitud desplaza todas las zonas en la misma cantidad. La solución prevista es leer la marcha directamente desde el bus CAN del coche, lo que elimina esta limitación por completo (ver [Mejoras](#mejoras)).
+El layout de tramas del bus de transmisión del Golf 6 se confirma en el banco y en el coche con el **modo sniff**: enviando `sniff:on` por BLE (o escribiéndolo en Serial) el pomo vuelca tramas como `sniff:<E|S><id-hex-8-digitos>:<payload-hex>` en ambos canales, limitadas a 20 líneas por segundo; `sniff:off` detiene el volcado. Si no llegan tramas durante 2 segundos con el sniff activo, el pomo notifica `can:no_frames` — un bus silencioso (bitrate incorrecto, CANH/CANL invertidos o un empalme defectuoso) se hace evidente en lugar de desconcertante. La conexión tiene una regla de seguridad dedicada: el controlador solo escucha y el jumper de terminación permanece deshabilitado (ver la [sección de conexión](#transceptor-can-sn65hvd230)).
 
 ## Stack tecnológico
 
@@ -123,7 +124,7 @@ Existe una **puerta de seguridad crítica**: la recaptura solo se activa cuando 
 | --- | --- |
 | Firmware | C++ · framework Arduino · PlatformIO |
 | MCU | ESP32-S3 (LilyGO T-Display S3), doble núcleo 240 MHz |
-| Sensor | Adafruit BNO085 (rotation vector integrado) · I2C 100 kHz |
+| Bus CAN | Transceptor Waveshare SN65HVD230 · ESP32-S3 TWAI (solo escucha) · 500 kbps |
 | Pantalla | AMOLED 1.43" · LVGL 8.3.11 · GFX Library for Arduino 1.4.9 |
 | BLE (firmware) | NimBLE-Arduino ^1.4.1 |
 | App | Flutter · Dart |
@@ -146,42 +147,53 @@ ChatGPT/
 │   │   ├── ui/                 # Pantallas LVGL generadas con SquareLine (arco + etiqueta)
 │   │   ├── boot/               # Splash de logo + fundido a la pantalla de marcha
 │   │   ├── theme/              # Color de acento / theming
-│   │   ├── bno/                # Driver BNO085 + recuperación del bus I2C
-│   │   ├── gears/              # Detección de marcha, recaptura de neutral, animación
-│   │   ├── ble/                # Servidor GATT NimBLE + modo debug
-│   │   └── calibration/        # Enum de marchas + persistencia de calibración (NVS)
-│   └── test/test_calibration/  # Tests Unity en host para el módulo de calibración
+│   │   ├── can/                # Driver TWAI solo escucha + modo sniff
+│   │   ├── geardecode/         # Tipos CAN puros, extractor de señales, estimador de relaciones
+│   │   ├── gearsource/         # Glue snapshot CAN → marcha
+│   │   ├── gears/              # Estado de pantalla de la marcha + animación del arco
+│   │   ├── ble/                # Servidor GATT NimBLE + modo debug + drenaje de sniff
+│   │   ├── calibration/        # Enum de marchas + fromString (sin NVS)
+│   │   └── bno/                # Driver IMU de v1 — referencia de solo lectura, no se compila
+│   └── test/                   # Tests Unity en host (env native)
+│       ├── test_calibration/   # Tests de fromString + enum
+│       └── test_decoder/       # Tests de estimador, señales, sniff y formato BLE
 ├── scuffy/                     # App complementaria Flutter
 │   └── lib/
 │       ├── services/ble_service.dart   # Singleton cliente BLE (scan, notify, comandos)
-│       ├── screens/                    # home, calibración de marchas, splash
+│       ├── screens/                    # home, sniff, splash
 │       ├── widgets/                    # tarjeta de marcha, tarjeta de tema, estado UI
-│       ├── models/                     # marcha, cuaternión, tema, estado de calibración
+│       ├── models/                     # marcha, tema, mensajes BLE, sesión de sniff
 │       └── data/                       # presets de tema
 ├── images/                         # Imágenes del producto usadas en este README
 ```
 
-## Calibración
+## Tabla de relaciones de marchas
 
-Las zonas de detección actuales se calibraron con mediciones reales tomadas dentro del coche, y los umbrales de zona de `gears.cpp` provienen directamente de esas mediciones:
+El estimador compara la relación RPM ÷ velocidad de rueda contra una tabla por marcha en `VehicleCanConfig` — el único punto de datos específico del vehículo. Los valores por defecto provienen de las relaciones publicadas de la caja MQ250-5F del Golf 6, escaladas por el diferencial final y las revoluciones de rueda por km para 205/55 R16 (~503.7 rev/km):
 
-| Marcha | Zona (relativa al punto muerto, en grados) |
+| Marcha | Relación (RPM por km/h) |
 | --- | --- |
-| N | `|roll| < 2.5` y `|pitch| < 2.5` |
-| R | `pitch < -3` y `roll > 18` |
-| 1 | `pitch < -3` y `12 < roll <= 18` |
-| 3 | `pitch < -3` y `7 < roll <= 12` |
-| 5 | `pitch < -3` y `roll <= 7` |
-| 4 | `pitch > 3` y `roll < -7.5` |
-| 2 | `pitch > 3` y `roll >= -7.5` |
+| R | 102.4 |
+| 1 | 107.5 |
+| 2 | 58.7 |
+| 3 | 38.3 |
+| 4 | 27.5 |
+| 5 | 22.0 |
 
-Puntos de anclaje medidos en el coche: R (20.4, −4.7), 1 (13.6, −9.7), 3 (10.0, −13.5), 5 (1.6, −9.2), N (0.9, 0.9), 2 (−5.1, 14.8), 4 (−9.6, 11.1) — mostrados como `(roll, pitch)`.
+Cada banda es el valor central ±8%, con un tiempo de caducidad de 500 ms y una velocidad mínima de 5 km/h por debajo de la cual la relación no tiene sentido (N). Son **valores iniciales a verificar en el coche** — la marcha atrás y la 1ª están cerca en esta caja, por lo que la detección de reversa por relación es ambigua; la decodificación directa de los mensajes de la caja prevista para una fase futura elimina esa ambigüedad por completo.
+
+## Verificación
+
+El camino del CAN se verifica manualmente — requiere hardware real, por lo que nunca es una puerta de CI:
+
+- **Banco** — la [checklist de banco CAN escucha y sniff](DigitalGearKnob/docs/bench-checklist.md): 24 comprobaciones sobre un mini-bus aislado de 500 kbps (prueba de solo escucha, flujo de tramas y límite de frecuencia, desbordamiento y recuperación, fallo seguro ante bitrate incorrecto o cables invertidos, strapping de arranque).
+- **En el coche** — la checklist para el coche en el [README del firmware](DigitalGearKnob/README.md#verificación): tramas de 29 bits en vivo en el bus del Golf 6, sniff por BLE y Serial, masa/common-mode con el motor en marcha y precisión de la marcha al conducir.
 
 ## Mejoras en el futuro
 
-**Lectura de la marcha directamente desde el bus CAN del coche (CAN_L / CAN_H).** Mi siguiente paso es sustituir la detección basada en el BNO085 por una lectura directa del bus CAN del vehículo: en lugar de inferir la marcha a partir de la orientación de la palanca, el propio coche informa de qué marcha está engranada. Esto elimina todo el camino de fusión de sensores — sin calibración, sin compensación de pendientes y sin la limitación de ~3° — porque la lectura llega directamente del vehículo.
+**Lectura de la marcha directamente desde los mensajes de marcha de VW (0x540 / 0x48A).** La implementación actual de v2 (Etapa 1) incluye toda la infraestructura CAN — una conexión de solo escucha que jamás puede perturbar el bus, con el jumper de terminación deshabilitado — más un estimador basado en la relación que obtiene la marcha a partir de RPM y velocidad de rueda. Mi siguiente paso es decodificar los mensajes de la caja de cambios, de modo que el coche informe directamente de la marcha engranada en lugar de que el pomo la estime a partir de la relación. Eso elimina la ambigüedad entre la marcha atrás y la 1ª y los casos límite de punto muerto/embrague; el layout exacto de las tramas se confirma primero con el modo sniff.
 
-**Y la pantalla desbloquea mucho más que la marcha.** La AMOLED ya está ahí — conectarse al bus CAN la convierte en un auténtico cuadro de instrumentos en la palanca. El coche transmite decenas de señales en vivo, y el pomo puede mostrar cualquiera de ellas en la pantalla de 1.43":
+**Y la pantalla desbloquea mucho más que la marcha.** La AMOLED ya está ahí — el pomo ahora está conectado al bus CAN, lo que lo convierte en un auténtico cuadro de instrumentos en la palanca. El coche transmite decenas de señales en vivo, y el pomo puede mostrar cualquiera de ellas en la pantalla de 1.43":
 
 - **Velocidad y revoluciones del motor** — valores en tiempo real en la palanca, sin apartar la vista de la carretera.
 - **Temperatura del refrigerante** — una alerta temprana ante el sobrecalentamiento.
@@ -195,8 +207,9 @@ La marcha pasa a ser un canal más entre muchos; el mismo pomo, la misma pantall
 
 Otras mejoras previstas:
 - **Notificación BLE dedicada `gear:X`** para que la app del teléfono muestre la marcha actual sin depuración ni sondeo.
-- **Asistente de calibración guiado en la app** — un flujo estructurado alrededor de la captura por marcha existente.
-- **Tests unitarios en host para la lógica de zonas** — extender el arnés de pruebas nativo de la calibración a la detección 2D de marchas.
+- **Filtrado de aceptación de tramas** — una vez que la etapa de sniff confirme los IDs relevantes, filtrar la recepción a solo esas tramas para reducir el ruido del bus.
+- **Más señales de tablero en la AMOLED** — temperatura del refrigerante, nivel de combustible, tensión de batería y odómetro ya están en el mismo bus.
+- **Más vehículos** — `VehicleCanConfig` es por vehículo, de modo que añadir otro coche pasa a ser una tarea de configuración más el flujo de sniff, no una reescritura del firmware.
 
 ## Licencia
 

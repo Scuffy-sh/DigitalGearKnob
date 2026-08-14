@@ -2,16 +2,16 @@
 
 **Read this in Spanish → [README_ES.md](README_ES.md)**
 
-I created this digital gear indicator from scratch — hardware, firmware, and app. An ESP32-S3 mounted on the gear stick reads the stick's 3D orientation from a BNO085 IMU, detects which of the seven gear positions (R, 1–5, N) the driver selected, and shows it on an AMOLED display with an LVGL animated arc. The same device exposes a Bluetooth Low Energy service that a Flutter companion app ("scuffy") uses for live debugging, theming, and calibration.
+I created this digital gear indicator from scratch — hardware, firmware, and app. An ESP32-S3 mounted on the gear stick reads the selected gear straight from the car's own CAN bus — the drivetrain network of my VW Golf 6 (2010, PQ35) — through a Waveshare SN65HVD230 transceiver, and shows it on an AMOLED display with an LVGL animated arc. The same device exposes a Bluetooth Low Energy service that a Flutter companion app ("scuffy") uses for live debugging, CAN sniffing, and theming.
 
 ## Key Features
 
-- **7-gear H-pattern detection** (R, 1–5, N) from a single 9-DOF IMU mounted on the lever.
+- **7-gear detection** (R, 1–5, N) read directly from the car's drivetrain CAN bus — no sensor on the stick and no calibration.
 - **AMOLED display with LVGL arc animation** — the selected gear is shown with a 2-second "loading" arc animation instead of a hard value jump.
-- **BLE connectivity to a Flutter app** — the app can connect, stream data, change the accent color, and run per-gear calibration.
-- **Live BLE debug mode** — sending `debug:on` makes the device notify `debug:ROLL,PITCH,GEAR` on every detection cycle, so thresholds can be tuned in real time.
-- **Automatic neutral-reference recapture for slope compensation** — if the lever stays near neutral, the reference quaternion is re-captured, re-centering the whole coordinate system when the car's slope changes.
-- **Boot-neutral calibration** — the neutral reference is captured from the first sensor reading after boot, so no manual setup is required.
+- **BLE connectivity to a Flutter app** — the app shows the live CAN status and gear, changes the accent color, and toggles the sniff mode.
+- **Live BLE debug mode** — sending `debug:on` makes the device notify `debug:<GEAR>,<RPM>,<SPEED>,<CANSTAT>` on every detection cycle.
+- **CAN sniff mode for reverse-engineering** — `sniff:on` dumps rate-limited frames (ID + payload) over BLE and Serial, so unknown frame layouts can be confirmed before they are configured.
+- **Listen-only by design** — the TWAI controller is hard-coded to listen-only mode with no transmit path; a listening node can never disturb the vehicle bus.
 
 ## Architecture Overview
 
@@ -20,32 +20,33 @@ I created this digital gear indicator from scratch — hardware, firmware, and a
 │                    ESP32-S3 · T-Display S3                     │
 │                    C++ / Arduino / PlatformIO                  │
 │                                                                │
-│  ┌──────────┐   I2C (100 kHz)   ┌─────────────┐                │
-│  │  BNO085  │ ─────────────────▶│  gears      │                │
-│  │  IMU     │   rotation vector │  (detection │                │
-│  └──────────┘   SH2_RV @ 200 Hz │   + zones)  │                │
-│                                  └──────┬──────┘               │
-│                                         │ LVGL 8.3.11          │
-│                                         ▼                      │
-│                                  ┌──────────────┐              │
-│                                  │ 1.43" AMOLED │              │
-│                                  │ arc + gear   │              │
-│                                  └──────────────┘              │
-│                                         │                      │
-│                                    NimBLE "SCUFFY"             │
-└────────────────────────────────────────┬───────────────────────┘
-                                         │ BLE
-                                         ▼
-                               ┌────────────────────┐
-                               │  Flutter app        │
-                               │  "scuffy"           │
-                               │  flutter_blue_plus  │
-                               │  scan · connect ·   │
-                               │  debug · calibrate  │
-                               └────────────────────┘
+│  ┌──────────────┐   TWAI · listen-only  ┌─────────────┐        │
+│  │ SN65HVD230   │ ─────────────────────▶│  gears      │        │
+│  │ CAN trans-   │   500 kbps · GPIO 3/5 │  (ratio     │        │
+│  │ ceiver       │   RX only             │  estimator) │        │
+│  └──────▲───────┘                       └──────┬──────┘        │
+│         │                                      │ LVGL 8.3.11   │
+│         │                                      ▼               │
+│         │                               ┌──────────────┐       │
+│         │                               │ 1.43" AMOLED │       │
+│         │                               │ arc + gear   │       │
+│         │                               └──────────────┘       │
+│         │                                      │               │
+│         │                                 NimBLE "SCUFFY"      │
+└─────────┼───────────────────────────────────────┬──────────────┘
+          │ CAN_H / CAN_L (drivetrain bus)        │ BLE
+          ▼                                       ▼
+┌───────────────────────────┐            ┌────────────────────┐
+│ VW Golf 6 (2010, PQ35)    │            │  Flutter app        │
+│ drivetrain CAN · 500 kbps │            │  "scuffy"           │
+│ 29-bit IDs · tapped       │            │  flutter_blue_plus  │
+└───────────────────────────┘            │  scan · connect ·   │
+                                         │  sniff · debug ·    │
+                                         │  theme              │
+                                         └────────────────────┘
 ```
 
-Two data paths meet on the board: the sensor quaternion flows in over I2C, is turned into a gear by the detection logic, and is rendered on the AMOLED via LVGL; in parallel, the same board runs a NimBLE GATT server so the phone app can observe and configure it.
+Two data paths meet on the board: frames from the vehicle's drivetrain CAN bus arrive through the SN65HVD230 transceiver, are turned into a gear by the ratio estimator, and are rendered on the AMOLED via LVGL; in parallel, the same board runs a NimBLE GATT server so the phone app can observe, sniff, and configure it.
 
 ## Components
 
@@ -55,38 +56,42 @@ Two data paths meet on the board: the sensor quaternion flows in over I2C, is tu
 
 **Technologies:** ESP32-S3 (dual-core, 240 MHz) · Wi-Fi/BLE · 1.43" AMOLED · QSPI · LVGL 8.3.11
 
-The brain and the screen in one. This LilyGO T-Display S3 board runs the whole firmware — BNO085 fusion handling, gear detection, LVGL rendering, and the BLE server — and its 1.43" AMOLED shows the current gear with the animated loading arc. The firmware also supports other AMOLED panels of the same board family; the active panel is selected with a define in `include/pin_config.h`.
+The brain and the screen in one. This LilyGO T-Display S3 board runs the whole firmware — CAN reception and decoding, gear detection, LVGL rendering, and the BLE server — and its 1.43" AMOLED shows the current gear with the animated loading arc. The firmware also supports other AMOLED panels of the same board family; the active panel is selected with a define in `include/pin_config.h`.
 
-### BNO085 9-DOF IMU
+### SN65HVD230 CAN transceiver
 
-<img src="images/bno085-imu.jpg" width="400" alt="BNO085 IMU">
+<img src="images/sn65hvd230-can.jpg" width="400" alt="Waveshare SN65HVD230 CAN transceiver">
 
-**Technologies:** Adafruit BNO085 breakout · accelerometer + gyroscope + magnetometer · on-chip sensor fusion (rotation vector) · I2C/SPI · STEMMA QT / Qwiic
+**Technologies:** Waveshare SN65HVD230 breakout · CAN 2.0B transceiver · 3.3 V logic · onboard 120 Ω termination (jumper, disabled for the vehicle tap)
 
-A 9-DOF IMU with an on-board fusion engine. Instead of fusing raw accel/gyro/mag data on the MCU, the BNO085 produces a filtered rotation vector (quaternion) internally, which is both more accurate and simpler to use. It is mounted on the gear stick so its orientation mirrors the stick's position. The firmware reads it over I2C at 100 kHz with the rotation-vector report enabled at a 5 ms interval, while the detection loop samples it at 5 Hz (every 200 ms) and applies a stability check.
+The bridge between the car and the knob. CAN is a differential two-wire bus (CAN_H / CAN_L); the SN65HVD230 converts it to the 3.3 V logic levels that the ESP32-S3's built-in TWAI controller can read. It connects to the Golf 6 drivetrain bus — the network that carries the RPM and wheel-speed signals the gear detection needs.
 
 #### Wiring
 
-The BNO085 is connected through its Qwiic connector, wired directly to the ESP32-S3 pins:
+The transceiver is wired directly to the ESP32-S3 pins:
 
-| BNO085 (Qwiic) | ESP32-S3 | Function |
-| -------------- | -------- | -------- |
-| **Red wire**   | **3.3V** | Power    |
-| **Black wire** | **GND**  | Ground   |
-| **Yellow wire**| **SDA**  | Data     |
-| **Green wire** | **SCL**  | Clock    |
+| SN65HVD230 | ESP32-S3 | Function |
+| ---------- | -------- | -------- |
+| **VCC**    | **3.3V** | Power    |
+| **GND**    | **GND**  | Ground   |
+| **TXD**    | **GPIO 3** | TWAI TX (never driven — listen-only) |
+| **RXD**    | **GPIO 5** | TWAI RX |
+| **CANH**   | Drivetrain CAN_H | Bus high |
+| **CANL**   | Drivetrain CAN_L | Bus low |
+
+> **Safety: listen-only and termination.** The firmware starts TWAI in listen-only mode and exposes no transmit path — the knob can never write to the car's bus. The onboard 120 Ω termination jumper of the Waveshare board must be **disabled** for the in-car tap: the drivetrain bus is already terminated at both ends, and a third 120 Ω in parallel would drop the bus to ~40 Ω and risk communication faults across the car. (Bench tests on an isolated mini-bus may keep it.)
 
 ### Gear knob
 
 <img src="images/gear-knob.avif" width="400" alt="Gear knob">
 
-The physical knob that replaces the stock one. The IMU is embedded inside the knob, which is the mechanical integration of the whole project into the car: power and electronics live inside the knob, and the display faces the driver.
+The physical knob that replaces the stock one. The electronics are embedded inside the knob — the ESP32-S3 board with the display and the small CAN transceiver that taps the car's drivetrain bus — which is the mechanical integration of the whole project into the car: power and electronics live inside the knob, and the display faces the driver.
 
 #### Assembly
 
-The open view shows the BNO085 and the ESP32-S3 wired inside the knob before they are glued in place; the final product keeps the display facing the driver, showing the current gear when powered on.
+The open view shows the ESP32-S3 wired inside the knob before the electronics were glued in place (the photo predates the v2 CAN transceiver). The final product keeps the display facing the driver, showing the current gear when powered on.
 
-<img src="images/knob-open.jpeg" width="280" alt="Knob open: BNO085 and ESP32-S3 wired inside"> <img src="images/knob-final-off.jpeg" width="280" alt="Final knob, display off"> <img src="images/knob-final-on.jpeg" width="280" alt="Final knob, display on">
+<img src="images/knob-open.jpeg" width="280" alt="Knob open: ESP32-S3 wired inside (v1 build)"> <img src="images/knob-final-off.jpeg" width="280" alt="Final knob, display off"> <img src="images/knob-final-on.jpeg" width="280" alt="Final knob, display on">
 
 ### Flutter app (scuffy)
 
@@ -94,28 +99,24 @@ The open view shows the BNO085 and the ESP32-S3 wired inside the knob before the
 
 **Technologies:** Flutter · Dart · flutter_blue_plus · permission_handler · shared_preferences
 
-The BLE client companion app. It scans for the device (advertised as `SCUFFY`), connects to the command characteristic, and exposes the live debug values (roll, pitch, detected gear) in a panel when the DEBUG toggle is on. It also lets the user change the display accent color and run per-gear calibration from the phone.
+The BLE client companion app. It scans for the device (advertised as `SCUFFY`), connects to the command characteristic, and shows the live CAN status and the current gear, with the debug values (gear, RPM, speed, CAN status) in a panel when the DEBUG toggle is on. It also has a sniff view that dumps raw CAN frames for reverse-engineering, and lets the user change the display accent color. Per-gear calibration is gone in v2 — the gear now comes from the car itself.
 
 ## How It Works
 
 ### Detection algorithm
 
-1. **Capture the neutral reference.** On the first valid sensor reading after boot (the lever is in N at that point), the raw quaternion is stored as `q_neutral`.
-2. **Compute the relative rotation.** Each new sample is expressed relative to neutral: `q_rel = conj(q_neutral) * q_current`. This removes the absolute mounting orientation and leaves only the stick's movement.
-3. **Extract tilt angles.** `q_rel` is decomposed into two angles in degrees: **pitch** (forward/backward tilt) and **roll** (left/right tilt). This is what separates the columns and rows of the H-pattern.
-4. **Map to 2D zones.** The H-pattern splits along pitch: forward gears have `pitch < 0`, reverse and even gears have `pitch > 0`. Roll then separates R / 1 / 3 / 5 in the forward row and 4 / 2 in the reverse row. Neutral is a small dead zone around the center.
-5. **Debounce with a stability counter.** A gear change is only accepted after **3 consecutive identical detections** (detection runs every 200 ms), which rejects transient readings while the stick is mid-shift.
-6. **Animate the arc.** On acceptance, a 2-second ease-in-out LVGL arc animation plays toward the target value while the label shows the target gear the whole time — it never counts through intermediate gears on the way down (no N-5-4-3-2-1 flicker).
+1. **Listen to the drivetrain bus.** The SN65HVD230 converts the differential CAN bus to 3.3 V logic; the ESP32-S3's built-in TWAI controller receives frames in listen-only mode at 500 kbps (GPIO 3 TX / GPIO 5 RX).
+2. **Extract RPM and wheel speed.** The firmware decodes the two signals from their CAN frames using a configurable layout — the frame IDs and bit positions live in `VehicleCanConfig` and are confirmed with the sniff mode before going live.
+3. **Compute the ratio.** Every detection cycle, the current ratio `RPM ÷ speed` is calculated.
+4. **Match against the gearbox ratio table.** Each gear has a ratio band; the estimator matches the live ratio to the closest band with **hysteresis** at the edges, so the display does not flicker around a shift boundary.
+5. **Apply the neutral, standstill, and clutch rules.** Below a minimum speed the result is N; if the ratio matches no band (neutral, clutch disengaged, wheel slip) the result is N; if frames stop arriving for 500 ms the result is N — a stale gear is never shown.
+6. **Debounce and animate the arc.** A gear change is only accepted after **3 consecutive identical detections** (detection runs every 200 ms), which rejects transient readings while the stick is mid-shift. On acceptance, a 2-second ease-in-out LVGL arc animation plays toward the target value while the label shows the target gear the whole time — it never counts through intermediate gears on the way down (no N-5-4-3-2-1 flicker).
 
-### Auto-recapture of neutral (slope compensation)
+### CAN bus reading and sniff mode
 
-The BNO085 measures absolute orientation against gravity. If the car's slope changes, the neutral reference captured at boot no longer matches the actual lever position, and every gear reads wrong.
+Because the gear is estimated from the RPM ÷ speed ratio, the indicator works without any sensor on the stick — and without the v1 limitations: no calibration, no slope compensation, and no mounting-angle drift. The remaining edge cases (neutral, clutch, wheel slip) are handled by the N rules above, and reverse vs. 1st gear is close on this gearbox (see [Gear ratio table](#gear-ratio-table)).
 
-The fix is to re-capture the reference at runtime: whenever the lever sits **within ±8° of neutral for ~1 s**, the firmware re-captures `q_neutral` as the normalized average of the samples taken in that window. Because the zones are defined as displacements relative to N, re-centering N re-centers the whole system.
-
-There is a critical safety gate: recapture only triggers when the *detected* gear is N or ambiguous. Without it, 5th gear (pitch −9.2°) would enter the ±8° window on a modest slope and corrupt the neutral reference while driving.
-
-**Known limitation.** With a single IMU on the lever, sustained slope offsets beyond ~3° cannot be fully distinguished from a real gear position — a slope of that magnitude shifts every zone by the same amount. The planned fix is to read the gear directly from the car's CAN bus, which removes this limitation entirely (see [Improvements](#improvements)).
+The frame layout of the Golf 6 drivetrain bus is confirmed on the bench and in the car with the **sniff mode**: sending `sniff:on` over BLE (or typing it on Serial) makes the knob dump frames as `sniff:<E|S><8-hex-id>:<payload-hex>` on both channels, rate-limited to 20 lines per second; `sniff:off` stops the dump. If no frames arrive while sniffing for 2 seconds, the knob reports `can:no_frames` — a silent bus (wrong bitrate, swapped CANH/CANL, or a bad tap) is obvious instead of puzzling. There is a dedicated safety rule for the tap: the controller only listens and the termination jumper stays disabled (see the [wiring section](#sn65hvd230-can-transceiver)).
 
 ## Tech Stack
 
@@ -123,7 +124,7 @@ There is a critical safety gate: recapture only triggers when the *detected* gea
 | --- | --- |
 | Firmware | C++ · Arduino framework · PlatformIO |
 | MCU | ESP32-S3 (LilyGO T-Display S3), dual-core 240 MHz |
-| Sensor | Adafruit BNO085 (on-chip rotation vector) · I2C 100 kHz |
+| CAN bus | Waveshare SN65HVD230 transceiver · ESP32-S3 TWAI (listen-only) · 500 kbps |
 | Display | 1.43" AMOLED · LVGL 8.3.11 · GFX Library for Arduino 1.4.9 |
 | BLE (firmware) | NimBLE-Arduino ^1.4.1 |
 | App | Flutter · Dart |
@@ -146,42 +147,53 @@ ChatGPT/
 │   │   ├── ui/                 # SquareLine-generated LVGL screens (arc + gear label)
 │   │   ├── boot/               # logo splash + fade into the gear screen
 │   │   ├── theme/              # accent color / theming
-│   │   ├── bno/                # BNO085 driver + I2C bus recovery
-│   │   ├── gears/              # gear detection, neutral recapture, arc animation
-│   │   ├── ble/                # NimBLE GATT server + debug mode
-│   │   └── calibration/        # gear enum + calibration persistence (NVS)
-│   └── test/test_calibration/  # host-side Unity tests for the calibration module
+│   │   ├── can/                # TWAI listen-only driver + sniff mode
+│   │   ├── geardecode/         # pure CAN types, signal extractor, ratio estimator
+│   │   ├── gearsource/         # CAN snapshot → gear glue
+│   │   ├── gears/              # gear display state + arc animation
+│   │   ├── ble/                # NimBLE GATT server + debug mode + sniff drain
+│   │   ├── calibration/        # gear enum + fromString (no NVS)
+│   │   └── bno/                # v1 IMU driver — kept as read-only reference, not built
+│   └── test/                   # host-side Unity tests (native env)
+│       ├── test_calibration/   # fromString + enum tests
+│       └── test_decoder/       # estimator, signals, sniff, BLE format tests
 ├── scuffy/                     # Flutter companion app
 │   └── lib/
 │       ├── services/ble_service.dart   # BLE client singleton (scan, notify, commands)
-│       ├── screens/                    # home, gear calibration, splash
+│       ├── screens/                    # home, sniff, splash
 │       ├── widgets/                    # gear card, theme card, status UI
-│       ├── models/                     # gear, quaternion, theme, calibration state
+│       ├── models/                     # gear, theme, BLE messages, sniff session
 │       └── data/                       # theme presets
 ├── images/                         # product images used by this README
 ```
 
-## Calibration
+## Gear Ratio Table
 
-The current detection zones were calibrated with real measurements taken inside the car, and the zone thresholds in `gears.cpp` come directly from those measurements:
+The estimator matches the RPM ÷ wheel-speed ratio against a per-gear table in `VehicleCanConfig` — the single vehicle-specific data point. The defaults come from the published MQ250-5F gearbox ratios of the Golf 6, scaled by the final drive and the wheel revs/km for 205/55 R16 (~503.7 revs/km):
 
-| Gear | Zone (relative to neutral, in degrees) |
+| Gear | Ratio (RPM per km/h) |
 | --- | --- |
-| N | `|roll| < 2.5` and `|pitch| < 2.5` |
-| R | `pitch < -3` and `roll > 18` |
-| 1 | `pitch < -3` and `12 < roll <= 18` |
-| 3 | `pitch < -3` and `7 < roll <= 12` |
-| 5 | `pitch < -3` and `roll <= 7` |
-| 4 | `pitch > 3` and `roll < -7.5` |
-| 2 | `pitch > 3` and `roll >= -7.5` |
+| R | 102.4 |
+| 1 | 107.5 |
+| 2 | 58.7 |
+| 3 | 38.3 |
+| 4 | 27.5 |
+| 5 | 22.0 |
 
-Measured anchor points from the car: R (20.4, −4.7), 1 (13.6, −9.7), 3 (10.0, −13.5), 5 (1.6, −9.2), N (0.9, 0.9), 2 (−5.1, 14.8), 4 (−9.6, 11.1) — shown as `(roll, pitch)`.
+Each band is the center value ±8%, with a 500 ms stale timeout and a 5 km/h minimum speed below which the ratio is meaningless (N). These are **starting values to verify in-car** — R and 1st are close on this gearbox, so ratio-only reverse detection is ambiguous; the direct decode of the gearbox messages planned for a future stage removes that ambiguity entirely.
+
+## Verification
+
+The CAN path is verified manually — it needs real hardware, so it is never a CI gate:
+
+- **Bench** — the [CAN listen & sniff bench checklist](DigitalGearKnob/docs/bench-checklist.md): 24 checks on an isolated 500 kbps mini-bus (listen-only proof, frame flow and rate cap, overflow and recovery, safe-fail on wrong bitrate or swapped wires, boot strapping).
+- **In-car** — the in-car checklist in the [firmware README](DigitalGearKnob/README.md#verification): live 29-bit frames on the Golf 6 bus, sniff over BLE and Serial, ground/common-mode with the engine running, and gear accuracy while driving.
 
 ## Future Improvements
 
-**Reading the gear directly from the car's CAN bus (CAN_L / CAN_H).** My next step is to replace the BNO085-based detection with a direct read from the vehicle's CAN bus: instead of inferring the gear from the stick's orientation, the car itself reports which gear is engaged. This removes the entire sensor-fusion path — no calibration, no slope compensation, and no ~3° limitation — because the reading comes straight from the vehicle.
+**Reading the gear directly from the VW gear messages (0x540 / 0x48A).** The current v2 implementation (Stage 1) ships the full CAN infrastructure — a listen-only tap that can never disturb the bus, with the termination jumper disabled — plus a ratio-based estimator that derives the gear from RPM and wheel speed. My next step is to decode the gearbox messages themselves, so the car reports the engaged gear directly instead of the knob estimating it from the ratio. That removes the ratio ambiguity between reverse and 1st gear and the neutral/clutch edge cases; the exact frame layout gets confirmed with the sniff mode first.
 
-**And the display unlocks much more than the gear.** The AMOLED is already there — connecting to the CAN bus turns it into a real dashboard on the stick. The car broadcasts dozens of live signals, and the knob can render any of them on the 1.43" screen:
+**And the display unlocks much more than the gear.** The AMOLED is already there — the knob is now connected to the CAN bus, which turns it into a real dashboard on the stick. The car broadcasts dozens of live signals, and the knob can render any of them on the 1.43" screen:
 
 - **Speed and engine RPM** — real-time values on the stick, no need to look away from the road.
 - **Engine coolant temperature** — an early warning for overheating.
@@ -195,8 +207,9 @@ The gear becomes just one channel among many; the same knob, display, and BLE li
 
 Other planned improvements:
 - **Dedicated `gear:X` BLE notification** so the phone app can display the current gear without debug mode or polling.
-- **Guided in-app calibration wizard** — a structured flow around the existing per-gear capture.
-- **Host-side unit tests for the zone logic** — extend the native test harness from calibration to the 2D gear detection.
+- **Accept-only frame filtering** — once the sniff stage confirms the relevant frame IDs, filter the RX path to just those frames to cut bus noise.
+- **More dashboard signals on the AMOLED** — coolant temperature, fuel level, battery voltage, and odometer are already on the same bus.
+- **More vehicles** — `VehicleCanConfig` is per-vehicle, so adding another car becomes a configuration task plus the sniff workflow, not a firmware rewrite.
 
 ## License
 
