@@ -98,9 +98,9 @@ Typical wire colours on VW drivetrain pairs (verify with a multimeter):
 | Signal | Typical colour |
 | --- | --- |
 | CAN-H (drivetrain) | orange/black |
-| CAN-L (drivetrain) | orange/brown |
-| CAN-H (comfort) | orange/violet |
-| CAN-L (comfort) | orange/brown |
+| CAN-H (convenience) | orange/green |
+| CAN-H (infotainment) | orange/violet |
+| CAN-L (all buses) | orange/brown |
 
 **Multimeter check:** both lines sit at ~2.5 V at rest; CAN-H rises to ~3.5 V and CAN-L drops to ~1.5 V while frames are active.
 
