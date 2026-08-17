@@ -42,7 +42,7 @@ A car can carry several independent CAN buses at different bitrates. On this VW 
 | **Comfort CAN** (Komfort-CAN) | 100 kbps | Doors, central locking, windows | ❌ |
 | **Infotainment CAN** | 100 kbps | Radio, navigation | ❌ |
 
-Tap the drivetrain bus **directly** (e.g. engine ECU or ABS connectors). The OBD-II port (pins 6/14) may sit on a separate diagnostic bus behind the gateway where frames are filtered or re-mapped. Typical VW wire colours — verify with a multimeter: CAN-H orange/black, CAN-L orange/brown (drivetrain); comfort is orange/violet + orange/brown. Both lines sit at ~2.5 V at rest; CAN-H rises to ~3.5 V and CAN-L drops to ~1.5 V while frames are active.
+Tap the drivetrain bus **directly** (e.g. engine ECU or ABS connectors). The OBD-II port (pins 6/14) may sit on a separate diagnostic bus behind the gateway where frames are filtered or re-mapped. Typical VW wire colours — verify with a multimeter: drivetrain CAN-H orange/black, convenience CAN-H orange/green, infotainment CAN-H orange/violet, CAN-L orange/brown (all buses). Both lines sit at ~2.5 V at rest; CAN-H rises to ~3.5 V and CAN-L drops to ~1.5 V while frames are active.
 
 > **The firmware confirms the right pair.** It listens at a fixed 500 kbps, so tapping the wrong bus shows `can:no_frames` (or bus errors) on the sniff screen instead of frames.
 

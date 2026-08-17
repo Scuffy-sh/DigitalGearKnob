@@ -98,9 +98,9 @@ Colores de cable típicos en los pares de transmisión de VW (verifícalo con un
 | Señal | Color típico |
 | --- | --- |
 | CAN-H (transmisión) | naranja/negro |
-| CAN-L (transmisión) | naranja/marrón |
-| CAN-H (confort) | naranja/violeta |
-| CAN-L (confort) | naranja/marrón |
+| CAN-H (conveniencia) | naranja/verde |
+| CAN-H (infotainment) | naranja/violeta |
+| CAN-L (todos los buses) | naranja/marrón |
 
 **Comprobación con multímetro:** ambos hilos reposan en ~2.5 V; el CAN-H sube a ~3.5 V y el CAN-L baja a ~1.5 V cuando hay tramas activas.
 
