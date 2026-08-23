@@ -27,8 +27,8 @@ Firmware for a digital gear indicator knob built with an ESP32 (LilyGo T-Display
 | **GND** | **GND** | Ground |
 | **TXD** | **GPIO 3** | TWAI TX (never driven — listen-only) |
 | **RXD** | **GPIO 5** | TWAI RX |
-| **CANH** | Drivetrain CAN_H | Bus high |
-| **CANL** | Drivetrain CAN_L | Bus low |
+| **CANH** | OBD-II pin 6 (CAN_H) | Bus high |
+| **CANL** | OBD-II pin 14 (CAN_L) | Bus low |
 
 > **Termination jumper.** The onboard 120 Ω termination of the Waveshare board must be **disabled** when tapping the car's bus — a third 120 Ω in parallel drops the bus to ~40 Ω and risks car-wide communication faults. Bench tests on an isolated mini-bus may keep it. The SN65HVD230 is 3.3 V logic; GPIO 3 must not be pulled high at boot (bench checklist 5.3).
 
@@ -39,12 +39,14 @@ A car can carry several independent CAN buses at different bitrates. On this VW 
 | Bus | Bitrate | Carries | Use it? |
 |-----|---------|---------|---------|
 | **Drivetrain CAN** (Antriebs-CAN) | 500 kbps | Engine (RPM), ABS (wheel speed), gateway | ✅ — tap here |
-| **Comfort CAN** (Komfort-CAN) | 100 kbps | Doors, central locking, windows | ❌ |
+| **Convenience CAN** (Komfort-CAN) | 100 kbps | Doors, central locking, windows | ❌ |
 | **Infotainment CAN** | 100 kbps | Radio, navigation | ❌ |
 
-Tap the drivetrain bus **directly** (e.g. engine ECU or ABS connectors). The OBD-II port (pins 6/14) may sit on a separate diagnostic bus behind the gateway where frames are filtered or re-mapped. Typical VW wire colours — verify with a multimeter: drivetrain CAN-H orange/black, convenience CAN-H orange/green, infotainment CAN-H orange/violet, CAN-L orange/brown (all buses). Both lines sit at ~2.5 V at rest; CAN-H rises to ~3.5 V and CAN-L drops to ~1.5 V while frames are active.
+The easiest tap point is the **OBD-II diagnostic connector**: drivetrain CAN-H on pin 6 (orange/black), CAN-L on pin 14 (orange/brown). A two-wire tap there requires no harness splicing and is fully reversible. Typical VW wire colours — verify with a multimeter: drivetrain CAN-H orange/black, convenience CAN-H orange/green, infotainment CAN-H orange/violet, CAN-L orange/brown (all buses). Both lines sit at ~2.5 V at rest; CAN-H rises to ~3.5 V and CAN-L drops to ~1.5 V while frames are active.
 
-> **The firmware confirms the right pair.** It listens at a fixed 500 kbps, so tapping the wrong bus shows `can:no_frames` (or bus errors) on the sniff screen instead of frames.
+> **Never power from OBD pin 16.** It carries permanent battery +12 V and would drain the battery when parked. Keep the knob's own supply.
+>
+> **Confirm with sniff.** The firmware listens at a fixed 500 kbps, so tapping the wrong bus shows `can:no_frames` (or bus errors) on the sniff screen instead of frames. If the OBD port sits behind a gateway on some model, fall back to a direct tap on the drivetrain pair (engine ECU / ABS connectors).
 
 What you can display per bus:
 

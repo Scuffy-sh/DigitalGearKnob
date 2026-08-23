@@ -76,8 +76,8 @@ El transceptor se conecta directamente a los pines del ESP32-S3:
 | **GND**     | **GND**     | Masa                           |
 | **TXD**     | **GPIO 3**  | TWAI TX (nunca se activa — solo escucha) |
 | **RXD**     | **GPIO 5**  | TWAI RX                        |
-| **CANH**    | CAN_H de transmisión | Línea alta del bus      |
-| **CANL**    | CAN_L de transmisión | Línea baja del bus      |
+| **CANH**    | Pin OBD-II 6 (CAN_H) | Línea alta del bus      |
+| **CANL**    | Pin OBD-II 14 (CAN_L) | Línea baja del bus      |
 
 > **Seguridad: solo escucha y terminación.** El firmware inicia TWAI en modo listen-only y no expone ningún camino de transmisión — el pomo jamás puede escribir en el bus del coche. El jumper de terminación de 120 Ω de la placa Waveshare debe estar **deshabilitado** para la conexión al vehículo: el bus de transmisión ya está terminado en ambos extremos, y un tercer 120 Ω en paralelo bajaría el bus a ~40 Ω y arriesgaría fallos de comunicación en todo el coche. (Las pruebas de banco sobre un mini-bus aislado pueden mantenerlo.)
 
@@ -88,10 +88,17 @@ Un coche puede llevar varios buses CAN independientes a distinta velocidad. En e
 | Bus | Velocidad | Qué lleva | ¿Usarlo? |
 | --- | --- | --- | --- |
 | **Bus de transmisión** (Antriebs-CAN) | 500 kbps | Motor (RPM), ABS (velocidad de rueda), gateway | ✅ — conectar aquí |
-| **Komfort-CAN** | 100 kbps | Puertas, cierre centralizado, ventanillas | ❌ |
+| **Convenience-CAN** | 100 kbps | Puertas, cierre centralizado, ventanillas | ❌ |
 | **Infotainment-CAN** | 100 kbps | Radio, navegación | ❌ |
 
-El bus de transmisión es el que transporta las señales de RPM y velocidad de rueda que necesita el estimador de relaciones. Conéctate a él **directamente** (p. ej. en el conector del motor o de la centralita ABS). El puerto de diagnóstico OBD-II (pines 6/14) puede estar en un bus de diagnóstico separado detrás de la gateway, donde las tramas se filtran o se re-mapean — es preferible el bus de transmisión físico.
+El bus de transmisión es el que transporta las señales de RPM y velocidad de rueda que necesita el estimador de relaciones. El punto de conexión más fácil es el **conector de diagnóstico OBD-II** bajo el tablero — en esta generación el bus de transmisión llega directamente hasta él:
+
+| Pin OBD-II | Señal | Color típico |
+| --- | --- | --- |
+| **6** | CAN-H (transmisión) | naranja/negro |
+| **14** | CAN-L | naranja/marrón |
+
+Una derivación de dos hilos en los pines 6 y 14 no requiere empalmar el arnés y es totalmente reversible. Confirma con el modo sniff que las tramas realmente fluyen — en algunos modelos el conector está detrás de una gateway que filtra las tramas en bruto; en ese caso recurre a empalmar el par de transmisión directamente en el conector del motor o de la centralita ABS.
 
 Colores de cable típicos en los pares de transmisión de VW (verifícalo con un multímetro):
 
@@ -103,6 +110,8 @@ Colores de cable típicos en los pares de transmisión de VW (verifícalo con un
 | CAN-L (todos los buses) | naranja/marrón |
 
 **Comprobación con multímetro:** ambos hilos reposan en ~2.5 V; el CAN-H sube a ~3.5 V y el CAN-L baja a ~1.5 V cuando hay tramas activas.
+
+> **Nunca alimentes desde el pin 16 del OBD.** Lleva +12 V permanente de la batería — alimentar el pomo desde ahí drena la batería al estacionar. Mantén la alimentación propia del pomo.
 
 > **El propio firmware confirma el par correcto.** Escucha a 500 kbps fijos, así que si te conectas al bus equivocado verás `can:no_frames` (o errores de bus) en la pantalla de sniff en lugar de tramas — un par incorrecto se hace evidente en lugar de desconcertante.
 

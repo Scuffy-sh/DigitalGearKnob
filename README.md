@@ -76,8 +76,8 @@ The transceiver is wired directly to the ESP32-S3 pins:
 | **GND**    | **GND**  | Ground   |
 | **TXD**    | **GPIO 3** | TWAI TX (never driven — listen-only) |
 | **RXD**    | **GPIO 5** | TWAI RX |
-| **CANH**   | Drivetrain CAN_H | Bus high |
-| **CANL**   | Drivetrain CAN_L | Bus low |
+| **CANH**   | OBD-II pin 6 (CAN_H) | Bus high |
+| **CANL**   | OBD-II pin 14 (CAN_L) | Bus low |
 
 > **Safety: listen-only and termination.** The firmware starts TWAI in listen-only mode and exposes no transmit path — the knob can never write to the car's bus. The onboard 120 Ω termination jumper of the Waveshare board must be **disabled** for the in-car tap: the drivetrain bus is already terminated at both ends, and a third 120 Ω in parallel would drop the bus to ~40 Ω and risk communication faults across the car. (Bench tests on an isolated mini-bus may keep it.)
 
@@ -88,10 +88,17 @@ A car can carry several independent CAN buses running at different bitrates. On 
 | Bus | Bitrate | Carries | Use it? |
 | --- | --- | --- | --- |
 | **Drivetrain CAN** (Antriebs-CAN) | 500 kbps | Engine (RPM), ABS (wheel speed), gateway | ✅ — tap here |
-| **Comfort CAN** (Komfort-CAN) | 100 kbps | Doors, central locking, windows | ❌ |
+| **Convenience CAN** (Komfort-CAN) | 100 kbps | Doors, central locking, windows | ❌ |
 | **Infotainment CAN** | 100 kbps | Radio, navigation | ❌ |
 
-The drivetrain bus is the one carrying the RPM and wheel-speed signals the ratio estimator needs. Tap it **directly** (e.g. at the engine ECU or ABS connectors). The OBD-II diagnostic port (pins 6/14) may sit on a separate diagnostic bus behind the gateway, where frames are filtered or re-mapped — prefer the physical drivetrain bus.
+The drivetrain bus is the one carrying the RPM and wheel-speed signals the ratio estimator needs. The easiest tap point is the **OBD-II diagnostic connector** under the dash — on this generation the drivetrain CAN reaches it directly:
+
+| OBD-II pin | Signal | Typical colour |
+| --- | --- | --- |
+| **6** | CAN-H (drivetrain) | orange/black |
+| **14** | CAN-L | orange/brown |
+
+A two-wire tap on pins 6 and 14 requires no harness splicing and is fully reversible. Confirm with the sniff mode that frames actually flow — on some models the connector sits behind a gateway where raw frames are filtered; in that case fall back to tapping the drivetrain pair directly at the engine ECU or ABS connectors.
 
 Typical wire colours on VW drivetrain pairs (verify with a multimeter):
 
@@ -103,6 +110,8 @@ Typical wire colours on VW drivetrain pairs (verify with a multimeter):
 | CAN-L (all buses) | orange/brown |
 
 **Multimeter check:** both lines sit at ~2.5 V at rest; CAN-H rises to ~3.5 V and CAN-L drops to ~1.5 V while frames are active.
+
+> **Never power from OBD pin 16.** It carries permanent battery +12 V — powering the knob from there drains the battery when parked. Keep the knob's own supply.
 
 > **The firmware itself confirms the right pair.** It listens at a fixed 500 kbps, so tapping the wrong bus shows `can:no_frames` (or bus errors) on the sniff screen instead of frames — a wrong pair is obvious, not confusing.
 
